@@ -180,6 +180,29 @@ Server endpoints: `GET /api/momo/config` (client checks if enabled),
 `POST /api/payments/request-momo` (fires request-to-pay),
 `POST /api/momo/callback` (MTN webhook — no `x-api-key` needed).
 
+## Airtel Money auto-verification
+
+Same pattern via the Airtel Africa OpenAPI Gateway (Zambia supported):
+`POST /merchant/v2/payments/ZM` sends a push payment; Airtel POSTs the result
+to your notify URL and the plan activates automatically on success (`TS`).
+
+To turn it on:
+
+1. Register at https://developers.airtel.africa (select Zambia as your
+   country), create an application with the Collection API, and submit KYC
+   for sandbox access. Note: Airtel has no free instant sandbox like MTN —
+   credentials come with your application.
+2. Add env vars to the Render service and redeploy:
+   - `AIRTEL_BASE_URL` (`https://openapiuat.airtel.africa` for staging,
+     `https://openapi.airtel.africa` for production)
+   - `AIRTEL_CLIENT_ID`, `AIRTEL_CLIENT_SECRET`
+   - `AIRTEL_NOTIFY_URL` — set to `https://<your-render-host>/api/airtel/callback`
+   - `AIRTEL_MERCHANT_PIN` — only if your merchant config requires a PIN
+3. Users approve via the Airtel Money app or USSD `*778#`.
+
+Server endpoints: `GET /api/airtel/config`,
+`POST /api/payments/request-airtel`, `POST /api/airtel/callback`.
+
 Referral paywall: users who signed up via a referral link
 (`/signup?ref=CODE`) see a **Time to pay up** banner on the dashboard until
 they have the Teacher Full plan.

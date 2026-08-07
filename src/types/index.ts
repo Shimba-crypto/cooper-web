@@ -194,7 +194,7 @@ export interface PaymentRecord {
   email: string;
   planId: PlanId;
   amount: number;
-  method: "mtn" | "airtel" | "mtn-momo";
+  method: "mtn" | "airtel" | "mtn-momo" | "airtel-api";
   phone: string;
   status: "pending" | "requested" | "confirmed" | "rejected";
   createdAt: number;

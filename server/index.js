@@ -133,6 +133,65 @@ const cleanMsisdn = (phone) => {
   return digits.startsWith("260") ? digits : digits.startsWith("0") ? `260${digits.slice(1)}` : `260${digits}`;
 };
 
+// ---------- Airtel Money (Airtel Africa OpenAPI Collection) ----------
+const AIRTEL = {
+  baseUrl: process.env.AIRTEL_BASE_URL ?? "https://openapiuat.airtel.africa",
+  clientId: process.env.AIRTEL_CLIENT_ID ?? "",
+  clientSecret: process.env.AIRTEL_CLIENT_SECRET ?? "",
+  notifyUrl: process.env.AIRTEL_NOTIFY_URL ?? "",
+  pin: process.env.AIRTEL_MERCHANT_PIN ?? "",
+  country: process.env.AIRTEL_COUNTRY ?? "ZM",
+  currency: process.env.AIRTEL_CURRENCY ?? "ZMW",
+};
+const AIRTEL_ENABLED = !!(AIRTEL.clientId && AIRTEL.clientSecret);
+
+let airtelTokenCache = { token: null, expiresAt: 0 };
+
+async function airtelToken() {
+  if (airtelTokenCache.token && airtelTokenCache.expiresAt > Date.now() + 60000) return airtelTokenCache.token;
+  const res = await fetch(`${AIRTEL.baseUrl}/auth/oauth2/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: AIRTEL.clientId,
+      client_secret: AIRTEL.clientSecret,
+      grant_type: "client_credentials",
+    }),
+  });
+  if (!res.ok) throw new Error(`Airtel token failed: ${res.status}`);
+  const data = await res.json();
+  airtelTokenCache = { token: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 };
+  return data.access_token;
+}
+
+async function airtelRequestToPay({ amount, reference, txId, payerPhone }) {
+  const token = await airtelToken();
+  const body = {
+    reference,
+    subscriber: { country: AIRTEL.country, currency: AIRTEL.currency, msisdn: payerPhone },
+    transaction: {
+      amount: String(amount),
+      country: AIRTEL.country,
+      currency: AIRTEL.currency,
+      id: txId,
+    },
+    ...(AIRTEL.pin ? { pin: AIRTEL.pin } : {}),
+    ...(AIRTEL.notifyUrl ? { notifyUrl: AIRTEL.notifyUrl } : {}),
+  };
+  const res = await fetch(`${AIRTEL.baseUrl}/merchant/v2/payments/${AIRTEL.country}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Country": AIRTEL.country,
+      "X-Currency": AIRTEL.currency,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Airtel requesttopay failed: ${res.status}`);
+  return res.json();
+}
+
 const notifyAllUsers = async (payload) => {
   const snap = await db.ref("users").once("value");
   const users = snap.val() ?? {};
@@ -358,6 +417,100 @@ app.post("/api/momo/callback", async (req, res) => {
     });
   } catch (err) {
     console.error("momo callback error:", err.message);
+  }
+});
+
+// GET /api/airtel/config — whether Airtel Money auto-verify is wired up (public)
+app.get("/api/airtel/config", (_req, res) => {
+  res.json({
+    enabled: AIRTEL_ENABLED,
+    baseUrl: AIRTEL.baseUrl,
+    notifyUrl: AIRTEL.notifyUrl,
+    plans: PLAN_PRICES,
+  });
+});
+
+// POST /api/payments/request-airtel  body: { uid, planId, phone }
+app.post("/api/payments/request-airtel", async (req, res) => {
+  if (!AIRTEL_ENABLED) return res.status(503).json({ error: "Airtel Money is not configured yet" });
+  const { uid, planId, phone } = req.body ?? {};
+  const price = PLAN_PRICES[planId];
+  if (!uid || !phone || !price) {
+    return res.status(400).json({ error: "Need uid, planId and phone" });
+  }
+  const msisdn = cleanMsisdn(phone);
+  if (!/^2609\d{8}$/.test(msisdn)) {
+    return res.status(400).json({ error: "Invalid phone number (expected +260 9x xxx xxxx)" });
+  }
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    if (!userSnap.exists()) return res.status(404).json({ error: "User not found" });
+    const email = userSnap.val().email ?? "";
+    const paymentId = `pay-${Date.now()}`;
+    const payment = {
+      id: paymentId,
+      uid,
+      email,
+      planId,
+      amount: price,
+      method: "airtel-api",
+      phone: msisdn,
+      status: "requested",
+      createdAt: Date.now(),
+    };
+    await db.ref(`payments/${uid}/${paymentId}`).set(payment);
+    const txId = `CW-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    const response = await airtelRequestToPay({
+      amount: price,
+      reference: paymentId,
+      txId,
+      payerPhone: msisdn,
+    });
+    const returnedTxId = response?.transaction?.id ?? txId;
+    await db.ref(`momo/airtelTxs/${returnedTxId}`).set({
+      uid,
+      paymentId,
+      planId,
+      reference: paymentId,
+      status: "PENDING",
+      createdAt: Date.now(),
+    });
+    res.json({ ok: true, paymentId, txId: returnedTxId });
+  } catch (err) {
+    console.error("request-airtel error:", err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/airtel/callback — Airtel Africa posts payment status here (no x-api-key!)
+// Body: { transaction: { id, status, reference, ... }, ... } — status "TS" = success
+app.post("/api/airtel/callback", async (req, res) => {
+  const body = req.body ?? {};
+  const txId = body?.transaction?.id ?? body?.id ?? body?.transactionId;
+  if (!txId) return res.status(200).json({ status: "received" });
+  res.status(200).json({ status: "received" });
+  try {
+    const statusCode = body?.transaction?.status ?? body?.status;
+    const snap = await db.ref(`momo/airtelTxs/${txId}`).once("value");
+    const tx = snap.val();
+    if (!tx || statusCode !== "TS") return;
+    const paymentSnap = await db.ref(`payments/${tx.uid}/${tx.paymentId}`).once("value");
+    if (!paymentSnap.exists() || paymentSnap.val().status === "confirmed") return;
+    await db.ref().update({
+      [`payments/${tx.uid}/${tx.paymentId}/status`]: "confirmed",
+      [`payments/${tx.uid}/${tx.paymentId}/confirmedAt`]: Date.now(),
+      [`payments/${tx.uid}/${tx.paymentId}/momoTransactionId`]: txId,
+      [`users/${tx.uid}/plan`]: { id: tx.planId, activatedAt: Date.now(), claimedVia: "airtel" },
+      [`momo/airtelTxs/${txId}/status`]: "SUCCESSFUL",
+    });
+    await notifyUser(tx.uid, {
+      type: "payment",
+      title: "Payment confirmed",
+      message: `Your Teacher Full plan is now active. Welcome aboard!`,
+      link: "/dashboard",
+    });
+  } catch (err) {
+    console.error("airtel callback error:", err.message);
   }
 });
 

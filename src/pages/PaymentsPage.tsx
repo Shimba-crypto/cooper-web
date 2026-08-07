@@ -24,6 +24,9 @@ export default function PaymentsPage() {
   const [momoEnabled, setMomoEnabled] = useState(false);
   const [momoBusy, setMomoBusy] = useState(false);
   const [momoMsg, setMomoMsg] = useState<string | null>(null);
+  const [airtelEnabled, setAirtelEnabled] = useState(false);
+  const [airtelBusy, setAirtelBusy] = useState(false);
+  const [airtelMsg, setAirtelMsg] = useState<string | null>(null);
 
   const buyablePlans = Object.values(PLANS);
   const discount = appUser?.discount;
@@ -33,6 +36,10 @@ export default function PaymentsPage() {
       .then((r) => r.json())
       .then((cfg) => setMomoEnabled(Boolean(cfg?.enabled)))
       .catch(() => setMomoEnabled(false));
+    fetch(`${API_URL}/api/airtel/config`)
+      .then((r) => r.json())
+      .then((cfg) => setAirtelEnabled(Boolean(cfg?.enabled)))
+      .catch(() => setAirtelEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -111,6 +118,28 @@ export default function PaymentsPage() {
       setMomoMsg(`MTN MoMo failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setMomoBusy(false);
+    }
+  };
+
+  const payWithAirtel = async () => {
+    if (!phone.trim()) return;
+    setAirtelBusy(true);
+    setAirtelMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/api/payments/request-airtel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: user.uid, planId: plan, phone: phone.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
+      setAirtelMsg(
+        `Request sent! Check your phone (${phone.trim()}) and approve the Airtel Money prompt (USSD *778# or the app) for K${effectivePrice}. Your plan activates automatically once you approve.`,
+      );
+    } catch (err) {
+      setAirtelMsg(`Airtel Money failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setAirtelBusy(false);
     }
   };
 
@@ -227,6 +256,24 @@ export default function PaymentsPage() {
                 {momoBusy ? "Sending request…" : `Pay now with MTN MoMo (K${effectivePrice})`}
               </button>
               {momoMsg && <p className={`mt-2 text-xs ${momoMsg.startsWith("MTN MoMo failed") ? "text-red-600 dark:text-red-400" : "text-emerald-800 dark:text-emerald-300"}`}>{momoMsg}</p>}
+            </div>
+          )}
+          {airtelEnabled && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/40">
+              <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">Instant payment via Airtel Money</p>
+              <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
+                Enter your Airtel number above, then tap the button — we'll send you a push payment and
+                activate your plan automatically the moment you approve it (USSD *778# or the Airtel Money app).
+              </p>
+              <button
+                type="button"
+                disabled={airtelBusy}
+                onClick={payWithAirtel}
+                className="btn-primary mt-3 w-full disabled:opacity-60"
+              >
+                {airtelBusy ? "Sending request…" : `Pay now with Airtel Money (K${effectivePrice})`}
+              </button>
+              {airtelMsg && <p className={`mt-2 text-xs ${airtelMsg.startsWith("Airtel Money failed") ? "text-red-600 dark:text-red-400" : "text-emerald-800 dark:text-emerald-300"}`}>{airtelMsg}</p>}
             </div>
           )}
           <p className="text-xs text-slate-400">
