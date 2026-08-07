@@ -34,9 +34,15 @@ export default function SignupPage() {
         const { get, ref: dbRef } = await import("firebase/database");
         const codeSnap = await get(dbRef(db, `referralCodes/${code}`));
         if (codeSnap.exists() && codeSnap.val().uid !== uid) {
-          await set(ref(db, `referrals/${codeSnap.val().uid}/${uid}`), {
+          const referrerUid = codeSnap.val().uid as string;
+          await set(ref(db, `referrals/${referrerUid}/${uid}`), {
             childUid: uid,
             childName: name,
+            createdAt: Date.now(),
+          });
+          await set(ref(db, `users/${uid}/referredBy`), {
+            referrerUid,
+            code,
             createdAt: Date.now(),
           });
         }

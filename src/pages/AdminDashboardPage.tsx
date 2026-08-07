@@ -26,6 +26,7 @@ import {
   Upload,
   Users,
   Ticket,
+  Wallet,
 } from "lucide-react";
 import { onValue, ref, remove, set, update } from "firebase/database";
 import { db } from "../firebase";
@@ -55,9 +56,10 @@ import type {
   RedeemCode,
   RedeemCodeType,
   Report,
+  PaymentRecord,
 } from "../types";
 
-type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "codes" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "johnweb";
+type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "codes" | "payments" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "johnweb";
 
 const PAPER_TYPES: PaperType[] = ["Paper 1", "Paper 2", "Practical"];
 const SUBJECTS = [
@@ -119,6 +121,7 @@ export default function AdminDashboardPage() {
     { id: "announcements", label: "Announcements", icon: Megaphone },
     { id: "plans", label: "Plans", icon: Gift },
     { id: "codes", label: "Redeem Codes", icon: Ticket },
+    { id: "payments", label: "Payments", icon: Wallet },
     { id: "users", label: "Users", icon: Users },
     { id: "leaderboard", label: "Leaderboard", icon: Trophy },
     { id: "groups", label: "Groups", icon: Database },
@@ -165,6 +168,7 @@ export default function AdminDashboardPage() {
         {tab === "announcements" && <AnnouncementsTab />}
         {tab === "plans" && <PlansTab />}
         {tab === "codes" && <RedeemCodesTab />}
+        {tab === "payments" && <PaymentsTab />}
         {tab === "users" && <UsersTab />}
         {tab === "leaderboard" && <LeaderboardTab />}
         {tab === "groups" && <GroupsManagerTab />}
@@ -761,6 +765,128 @@ function UsersTab() {
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function PaymentsTab() {
+  const [payments, setPayments] = useState<Record<string, Record<string, PaymentRecord>> | null>(null);
+  const [users, setUsers] = useState<Record<string, AppUser> | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const { showToast, toast } = useToast();
+
+  useEffect(() => {
+    const unsubPayments = onValue(ref(db, "payments"), (snap) => setPayments(snap.val() ?? {}));
+    const unsubUsers = onValue(ref(db, "users"), (snap) => setUsers(snap.val() ?? {}));
+    return () => {
+      unsubPayments();
+      unsubUsers();
+    };
+  }, []);
+
+  const apiKey = localStorage.getItem("cooperweb:admin-api-key") ?? "";
+
+  const confirmPayment = async (p: PaymentRecord, status: "confirmed" | "rejected") => {
+    if (!apiKey) {
+      setMessage("Set your API key in the Broadcast tab first (it is stored on this device).");
+      return;
+    }
+    setBusyId(p.id);
+    try {
+      const res = await fetch(`${API_URL}/api/payments/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify({ uid: p.uid, paymentId: p.id, status }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? `API ${res.status}`);
+      showToast(status === "confirmed" ? "Plan activated" : "Payment rejected");
+      setMessage(null);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const rows = payments
+    ? Object.values(payments)
+        .flatMap((byUser) => Object.values(byUser))
+        .sort((a, b) => b.createdAt - a.createdAt)
+    : [];
+
+  const pendingCount = rows.filter((p) => p.status === "pending" || p.status === "requested").length;
+
+  return (
+    <div className="card h-fit p-6">
+      {toast}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+          Payments ({rows.length}{pendingCount > 0 ? `, ${pendingCount} awaiting action` : ""})
+        </h2>
+        <p className="text-xs text-slate-400">
+          Use the Broadcast tab's API key to confirm/reject. MTN MoMo "requested" payments confirm themselves via webhook.
+        </p>
+      </div>
+      {message && (
+        <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-400">{message}</p>
+      )}
+      {rows.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No payments yet.</p>
+      ) : (
+        <ul className="mt-4 space-y-2">
+          {rows.map((p) => (
+            <li
+              key={p.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-4 py-3 dark:bg-slate-800/50"
+            >
+              <div className="min-w-0">
+                <p className="font-medium text-slate-800 dark:text-slate-200">
+                  {(users?.[p.uid]?.displayName ?? p.email) || p.uid.slice(0, 8)} — {planName(p.planId)} — K{p.amount}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {new Date(p.createdAt).toLocaleString()} · {p.method.toUpperCase()} · {p.phone}
+                  {p.momoTransactionId ? ` · TXN ${p.momoTransactionId}` : ""}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    p.status === "confirmed"
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
+                      : p.status === "requested"
+                        ? "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-400"
+                        : p.status === "rejected"
+                          ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400"
+                          : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400"
+                  }`}
+                >
+                  {p.status}
+                </span>
+                {(p.status === "pending" || p.status === "requested") && (
+                  <>
+                    <button
+                      disabled={busyId === p.id}
+                      onClick={() => confirmPayment(p, "confirmed")}
+                      className="btn-primary !py-1 text-xs disabled:opacity-60"
+                    >
+                      {busyId === p.id ? "…" : "Confirm"}
+                    </button>
+                    <button
+                      disabled={busyId === p.id}
+                      onClick={() => confirmPayment(p, "rejected")}
+                      className="btn-secondary !py-1 text-xs disabled:opacity-60"
+                    >
+                      Reject
+                    </button>
+                  </>
+                )}
               </div>
             </li>
           ))}

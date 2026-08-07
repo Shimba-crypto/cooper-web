@@ -50,6 +50,7 @@ export interface AppUser {
   plan?: UserPlan;
   avatarUrl?: string;
   unlockedQuizIds?: string[];
+  referredBy?: { referrerUid: string; code: string; createdAt: number };
   discount?: { percent: number; code: string; redeemedAt: number };
 }
 
@@ -193,11 +194,12 @@ export interface PaymentRecord {
   email: string;
   planId: PlanId;
   amount: number;
-  method: "mtn" | "airtel";
+  method: "mtn" | "airtel" | "mtn-momo";
   phone: string;
-  status: "pending" | "confirmed" | "rejected";
+  status: "pending" | "requested" | "confirmed" | "rejected";
   createdAt: number;
   confirmedAt?: number;
+  momoTransactionId?: string;
 }
 
 export interface Referral {

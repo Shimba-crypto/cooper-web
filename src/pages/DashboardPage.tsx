@@ -14,10 +14,11 @@ import type { QuizResult } from "../types";
 
 export default function DashboardPage() {
   const { papers, loading } = usePapers();
-  const { user, planId } = useAuth();
+  const { user, appUser, planId } = useAuth();
   const [viewed] = useLocalStorage<string[]>("cooperweb:viewed", []);
   const [bookmarks] = useLocalStorage<string[]>("cooperweb:bookmarks", []);
   const [ratings] = useLocalStorage<Record<string, number>>("cooperweb:ratings", {});
+  const [payPromptDismissed, setPayPromptDismissed] = useLocalStorage("cooperweb:pay-prompt-dismissed", false);
   const [myResults, setMyResults] = useState<Record<string, QuizResult> | null>(null);
 
   useEffect(() => {
@@ -76,6 +77,28 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {appUser?.referredBy && !payPromptDismissed && planId !== "teacher_full" && planId !== "admin" && (
+        <div className="card mt-8 border-amber-400 p-6 dark:border-amber-800">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">Time to pay up</h2>
+              <p className="mt-1 max-w-xl text-sm text-slate-600 dark:text-slate-400">
+                A friend invited you to CooperWeb. Get the full experience — marking schemes,
+                premium quizzes and priority support with <strong className="text-slate-800 dark:text-slate-200">Teacher Full (K200)</strong>.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link to="/payments" className="btn-primary">
+                Pay now
+              </Link>
+              <button onClick={() => setPayPromptDismissed(true)} className="btn-secondary">
+                Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="card mt-8 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">

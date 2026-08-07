@@ -150,6 +150,40 @@ Render setup: root directory `server`, start command `npm start`, env vars
 service-account JSON). Without env, the server falls back to
 `serviceAccountKey.json` next to it or in the parent directory.
 
+## MTN MoMo auto-verification (automatic plan activation)
+
+Payments are auto-verified through the MTN MoMo API (Collection). When a user
+hits **Pay now with MTN MoMo**, the server sends a request-to-pay to their
+phone; when they approve it, MTN calls back and the plan activates instantly
+(payment becomes `confirmed`, `users/<uid>/plan` is set).
+
+To turn it on:
+
+1. Register as an MTN MoMo API developer (sandbox instantly):
+   https://momodeveloper.mtn.com — create a Collection subscription and copy
+   your `Primary key` (Subscription Key), `API user`, and `API key`.
+2. For production, apply to become an MTN MoMo merchant with MTN Zambia
+   (telco review, ~2 weeks). Production needs `MTN_MOMO_TARGET_ENV` = your
+   merchant product/production target, a public callback URL (Render gives
+   you one), and your merchant credentials.
+3. Add these env vars to the Render service and redeploy:
+   - `MTN_MOMO_BASE_URL` (default `https://sandbox.momodeveloper.mtn.com`)
+   - `MTN_MOMO_SUBSCRIPTION_KEY`
+   - `MTN_MOMO_USER_ID` (API user)
+   - `MTN_MOMO_USER_KEY` (API key)
+   - `MTN_MOMO_TARGET_ENV` (`sandbox` in dev)
+   - `MTN_MOMO_CALLBACK_URL` — set to `https://<your-render-host>/api/momo/callback`
+4. Verify: open Payments → "Pay now with MTN MoMo", approve the push on the
+   phone; the plan activates automatically.
+
+Server endpoints: `GET /api/momo/config` (client checks if enabled),
+`POST /api/payments/request-momo` (fires request-to-pay),
+`POST /api/momo/callback` (MTN webhook — no `x-api-key` needed).
+
+Referral paywall: users who signed up via a referral link
+(`/signup?ref=CODE`) see a **Time to pay up** banner on the dashboard until
+they have the Teacher Full plan.
+
 ## Broadcast & push scripts
 
 ```bash
@@ -196,6 +230,8 @@ src/
 | `payments/<uid>/<pid>` | self / admin | admin |
 | `referralCodes/<code>` | public | code owner |
 | `referrals/<referrer>/<child>` | self | referrer |
+| `momo/requests/<referenceId>` | admin only | admin only |
+| `momo/byExternal/<paymentId>` | admin only | admin only |
 | `pushTokens/<uid>` | admin | self |
 | `analytics/pages/<path>/views` | admin | anyone (increment) |
 

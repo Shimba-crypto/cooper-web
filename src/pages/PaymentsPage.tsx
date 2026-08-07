@@ -6,7 +6,7 @@ import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { PLANS, planName } from "../utils/plans";
 import RedeemCard from "../components/RedeemCard";
-import { PAYMENT_MERCHANT_NUMBER } from "../config";
+import { PAYMENT_MERCHANT_NUMBER, API_URL } from "../config";
 import type { PaymentRecord, PlanId } from "../types";
 
 const MERCHANT_DISPLAY = `+260 ${PAYMENT_MERCHANT_NUMBER.slice(1, 3)} ${PAYMENT_MERCHANT_NUMBER.slice(3, 6)} ${PAYMENT_MERCHANT_NUMBER.slice(6)}`;
@@ -21,9 +21,19 @@ export default function PaymentsPage() {
   const [busy, setBusy] = useState(false);
   const [myPayments, setMyPayments] = useState<Record<string, PaymentRecord> | null>(null);
   const [searchParams] = useSearchParams();
+  const [momoEnabled, setMomoEnabled] = useState(false);
+  const [momoBusy, setMomoBusy] = useState(false);
+  const [momoMsg, setMomoMsg] = useState<string | null>(null);
 
   const buyablePlans = Object.values(PLANS);
   const discount = appUser?.discount;
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/momo/config`)
+      .then((r) => r.json())
+      .then((cfg) => setMomoEnabled(Boolean(cfg?.enabled)))
+      .catch(() => setMomoEnabled(false));
+  }, []);
 
   useEffect(() => {
     const planParam = searchParams.get("plan");
@@ -81,6 +91,28 @@ export default function PaymentsPage() {
   };
 
   const entries = myPayments ? Object.values(myPayments).sort((a, b) => b.createdAt - a.createdAt) : [];
+
+  const payWithMomo = async () => {
+    if (!phone.trim()) return;
+    setMomoBusy(true);
+    setMomoMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/api/payments/request-momo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: user.uid, planId: plan, phone: phone.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
+      setMomoMsg(
+        `Request sent! Check your phone (${phone.trim()}) and approve the MTN MoMo prompt for K${effectivePrice}. Your plan activates automatically once you confirm.`,
+      );
+    } catch (err) {
+      setMomoMsg(`MTN MoMo failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setMomoBusy(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
@@ -179,8 +211,26 @@ export default function PaymentsPage() {
                 ? `Pay K${effectivePrice} (was K${basePrice}) and request activation`
                 : `Pay K${effectivePrice} and request activation`}
           </button>
+          {momoEnabled && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/40">
+              <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">Instant payment via MTN MoMo</p>
+              <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
+                Enter your MTN number above, then tap the button — we'll send you a request-to-pay and
+                activate your plan automatically the moment you approve it.
+              </p>
+              <button
+                type="button"
+                disabled={momoBusy}
+                onClick={payWithMomo}
+                className="btn-primary mt-3 w-full disabled:opacity-60"
+              >
+                {momoBusy ? "Sending request…" : `Pay now with MTN MoMo (K${effectivePrice})`}
+              </button>
+              {momoMsg && <p className={`mt-2 text-xs ${momoMsg.startsWith("MTN MoMo failed") ? "text-red-600 dark:text-red-400" : "text-emerald-800 dark:text-emerald-300"}`}>{momoMsg}</p>}
+            </div>
+          )}
           <p className="text-xs text-slate-400">
-            Current plan: <span className="font-semibold">{planId}</span>. After payment we manually confirm and activate — usually within 24 hours.
+            Current plan: <span className="font-semibold">{planId}</span>. Manual payments are confirmed within 24 hours; MTN MoMo is instant.
           </p>
         </form>
       )}

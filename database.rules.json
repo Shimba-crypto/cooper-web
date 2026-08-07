@@ -167,6 +167,12 @@
         ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || newData.child('uid').val() === auth.uid)"
       }
     },
+    "momo": {
+      "$node": {
+        ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
+        ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+      }
+    },
     "pushTokens": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
