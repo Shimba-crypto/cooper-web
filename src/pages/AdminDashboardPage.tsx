@@ -38,7 +38,7 @@ import { useToast } from "../components/Toast";
 import { notifyAllUsers } from "../utils/notify";
 import PlansOverview from "../components/PlansOverview";
 import { JOHNWEB_INVITE_URL, JOHNWEB_URL, PAYMENT_MERCHANT_NUMBER, API_URL } from "../config";
-import { PLANS, generateClaimToken, planName } from "../utils/plans";
+import { PLANS, generateClaimToken, planName, type BuyablePlanId } from "../utils/plans";
 import type {
   Announcement,
   AppUser,
@@ -47,7 +47,6 @@ import type {
   Note,
   Paper,
   PaperType,
-  PlanId,
   Question,
   Quiz,
   QuizResult,
@@ -754,7 +753,7 @@ function UsersTab() {
 function PlansTab() {
   const { user } = useAuth();
   const [codes, setCodes] = useState<Record<string, ClaimCode> | null>(null);
-  const [planId, setPlanId] = useState<Exclude<PlanId, "free" | "admin">>("student_plus");
+  const [planId, setPlanId] = useState<BuyablePlanId>("teacher_full");
   const [usageLimit, setUsageLimit] = useState(1);
   const [quantity, setQuantity] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
@@ -804,7 +803,7 @@ function PlansTab() {
 
   const whatsAppLink = (token: string) =>
     `https://wa.me/?text=${encodeURIComponent(
-      `Claim your ${planName(codeById(token) ?? "student_plus")} plan on CooperWeb: ${window.location.origin}/claim/${token}`
+      `Claim your ${planName(codeById(token) ?? "teacher_full")} plan on CooperWeb: ${window.location.origin}/claim/${token}`
     )}`;
 
   const removeCode = async (token: string) => {
@@ -844,7 +843,7 @@ function PlansTab() {
             <select
               className="input"
               value={planId}
-              onChange={(e) => setPlanId(e.target.value as Exclude<PlanId, "free" | "admin">)}
+              onChange={(e) => setPlanId(e.target.value as BuyablePlanId)}
             >
               {Object.values(PLANS).map((p) => (
                 <option key={p.id} value={p.id}>

@@ -1,7 +1,9 @@
 import type { PlanId } from "../types";
 
+export type BuyablePlanId = Exclude<PlanId, "free" | "admin" | "student_plus" | "teacher_plus">;
+
 export interface PlanInfo {
-  id: Exclude<PlanId, "free" | "admin">;
+  id: BuyablePlanId;
   name: string;
   price: string;
   priceK: number;
@@ -9,26 +11,7 @@ export interface PlanInfo {
   features: string[];
 }
 
-export const PLANS: Record<Exclude<PlanId, "free" | "admin">, PlanInfo> = {
-  student_plus: {
-    id: "student_plus",
-    name: "Student Plus",
-    price: "K50",
-    priceK: 50,
-    description: "For learners who want to practise with quizzes.",
-    features: ["Unlimited timed quizzes", "Leaderboard access", "Instant quiz results"],
-  },
-  teacher_plus: {
-    id: "teacher_plus",
-    name: "Teacher Plus",
-    price: "K100",
-    priceK: 100,
-    description: "Everything a teacher needs for classroom prep.",
-    features: [
-      "Everything in Student Plus",
-      "Marking schemes",
-    ],
-  },
+export const PLANS: Record<BuyablePlanId, PlanInfo> = {
   teacher_full: {
     id: "teacher_full",
     name: "Teacher Full",
@@ -36,7 +19,8 @@ export const PLANS: Record<Exclude<PlanId, "free" | "admin">, PlanInfo> = {
     priceK: 200,
     description: "Complete access to every CooperWeb feature.",
     features: [
-      "Everything in Teacher Plus",
+      "Everything in the free plan",
+      "Marking schemes",
       "All current and future features",
       "Priority support",
     ],
@@ -45,9 +29,9 @@ export const PLANS: Record<Exclude<PlanId, "free" | "admin">, PlanInfo> = {
 
 export const PLAN_LEVEL: Record<PlanId, number> = {
   free: 0,
-  student_plus: 1,
-  teacher_plus: 2,
-  teacher_full: 3,
+  student_plus: 0,
+  teacher_plus: 1,
+  teacher_full: 2,
   admin: 99,
 };
 
@@ -55,14 +39,15 @@ export function hasPlan(current: PlanId, required: PlanId): boolean {
   return PLAN_LEVEL[current] >= PLAN_LEVEL[required];
 }
 
+const LEGACY_NAMES: Partial<Record<PlanId, string>> = {
+  student_plus: "Free",
+  teacher_plus: "Teacher Plus",
+};
+
 export function planName(id: PlanId): string {
   if (id === "admin") return "Admin";
   if (id === "free") return "Free";
-  return PLANS[id].name;
-}
-
-export function requiredPlanName(required: Exclude<PlanId, "free" | "admin">): PlanInfo {
-  return PLANS[required];
+  return PLANS[id as BuyablePlanId]?.name ?? LEGACY_NAMES[id] ?? id;
 }
 
 export function generateClaimToken(): string {

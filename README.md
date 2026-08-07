@@ -23,9 +23,7 @@ Live: https://chikondi-dot.web.app · Source: https://github.com/Shimba-crypto/c
 - **Push notifications** (FCM web push; admins broadcast to everyone)
 - Dark / light theme toggle (persisted)
 - Free sign-up with email/password + email verification
-- **Paid plans**: Student Plus K50, Teacher Plus K100, Teacher Full K200
-  (users pay to the merchant number and admins activate, or claim via
-  admin-generated links)
+- **Paid plan**: Teacher Full K200 (quizzes, leaderboard and notes are free)
 - **Admin dashboard**: papers/quizzes CRUD, plan claim links, bulk
   broadcast, CSV/JSON quiz import, page-view analytics, promote users
 - PWA: installable + works offline after first visit
@@ -36,10 +34,8 @@ Live: https://chikondi-dot.web.app · Source: https://github.com/Shimba-crypto/c
 
 | Plan | Price | Unlocks |
 | ---- | ----- | ------- |
-| Free | K0 | Papers, search, bookmarks, ratings |
-| Student Plus | K50 | Timed quizzes, leaderboard |
-| Teacher Plus | K100 | Marking schemes |
-| Teacher Full | K200 | Everything, including future features |
+| Free | K0 | Papers, search, bookmarks, ratings, quizzes, leaderboard, notes |
+| Teacher Full | K200 | Everything: marking schemes, future features, priority support |
 
 Users pay MTN/Airtel mobile money to **+260 97 587 6361** and send the
 transaction ID; admins activate the plan from the Payments page. Admins can

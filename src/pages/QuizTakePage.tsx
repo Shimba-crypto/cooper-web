@@ -7,8 +7,6 @@ import { useQuizzes } from "../hooks/useQuizzes";
 import { getQuizOffline } from "./QuizListPage";
 import { useAuth } from "../context/AuthContext";
 import type { Quiz } from "../types";
-import { hasPlan } from "../utils/plans";
-import UpgradePrompt from "../components/UpgradePrompt";
 import Spinner from "../components/Spinner";
 import { useConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
@@ -26,7 +24,7 @@ export default function QuizTakePage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const { quizzes, loading, error, retry } = useQuizzes();
-  const { user, appUser, planId } = useAuth();
+  const { user, appUser } = useAuth();
   const navigate = useNavigate();
 
   const stateQuiz = (location.state as { quiz?: Quiz } | null)?.quiz;
@@ -153,7 +151,6 @@ export default function QuizTakePage() {
   }
 
   if (phase === "start") {
-    const locked = !hasPlan(planId, "student_plus");
     return (
       <>
         {toast}
@@ -180,29 +177,23 @@ export default function QuizTakePage() {
               ⏱ {quiz.durationMinutes} minutes
             </span>
           </div>
-          {locked ? (
-            <div className="mt-6 text-left">
-              <UpgradePrompt required="student_plus" />
-            </div>
-          ) : (
-            <>
-              <p className="mx-auto mt-6 max-w-md text-sm text-slate-500 dark:text-slate-400">
-                {user
-                  ? "Your score will be saved and added to the leaderboard."
-                  : "Log in to save your score and earn leaderboard points."}
+          <>
+            <p className="mx-auto mt-6 max-w-md text-sm text-slate-500 dark:text-slate-400">
+              {user
+                ? "Your score will be saved and added to the leaderboard."
+                : "Log in to save your score and earn leaderboard points."}
+            </p>
+            <button onClick={() => setPhase("taking")} className="btn-primary mt-6 !px-8 !py-3">
+              <Play className="h-5 w-5" /> Start quiz
+            </button>
+            {!user && (
+              <p className="mt-4 text-sm">
+                <Link to={`/login?next=/quiz/${quiz.id}`} className="font-semibold text-emerald-600 hover:underline">
+                  Log in to save your score
+                </Link>
               </p>
-              <button onClick={() => setPhase("taking")} className="btn-primary mt-6 !px-8 !py-3">
-                <Play className="h-5 w-5" /> Start quiz
-              </button>
-              {!user && (
-                <p className="mt-4 text-sm">
-                  <Link to={`/login?next=/quiz/${quiz.id}`} className="font-semibold text-emerald-600 hover:underline">
-                    Log in to compete
-                  </Link>
-                </p>
-              )}
-            </>
-          )}
+            )}
+          </>
         </div>
       </div>
       </>

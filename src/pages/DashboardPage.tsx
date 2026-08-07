@@ -6,9 +6,8 @@ import { db } from "../firebase";
 import { usePapers } from "../hooks/usePapers";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useAuth } from "../context/AuthContext";
-import { hasPlan, planName } from "../utils/plans";
+import { planName } from "../utils/plans";
 import PlanBadge from "../components/PlanBadge";
-import UpgradePrompt from "../components/UpgradePrompt";
 import Spinner from "../components/Spinner";
 import type { QuizResult } from "../types";
 
@@ -87,11 +86,6 @@ export default function DashboardPage() {
           </div>
           <PlanBadge planId={planId} />
         </div>
-        {!hasPlan(planId, "student_plus") && (
-          <div className="mt-4">
-            <UpgradePrompt required="student_plus" />
-          </div>
-        )}
       </section>
 
       <div className="mt-10 grid gap-8 lg:grid-cols-2">

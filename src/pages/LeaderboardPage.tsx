@@ -4,15 +4,13 @@ import { Trophy } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
-import { hasPlan } from "../utils/plans";
-import UpgradePrompt from "../components/UpgradePrompt";
 import Spinner from "../components/Spinner";
 import Avatar from "../components/Avatar";
 import { getProfiles } from "../data/fetchProfiles";
 import type { LeaderboardEntry, Profile } from "../types";
 
 export default function LeaderboardPage() {
-  const { user, planId } = useAuth();
+  const { user } = useAuth();
   const [entries, setEntries] = useState<Record<string, LeaderboardEntry> | null>(null);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [loading, setLoading] = useState(true);
@@ -59,12 +57,6 @@ export default function LeaderboardPage() {
           </p>
         </div>
       </div>
-
-      {!hasPlan(planId, "student_plus") && (
-        <div className="mt-6">
-          <UpgradePrompt required="student_plus" />
-        </div>
-      )}
 
       {ranked.length === 0 ? (
         <div className="card mt-8 p-12 text-center text-slate-500 dark:text-slate-400">

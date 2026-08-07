@@ -139,7 +139,7 @@ export default function PaperViewPage() {
               <Download className="h-4 w-4" /> Open PDF
             </a>
             {paper.markingUrl &&
-              (hasPlan(planId, "teacher_plus") ? (
+              (hasPlan(planId, "teacher_full") ? (
                 <a
                   href={paper.markingUrl}
                   target="_blank"
@@ -150,10 +150,10 @@ export default function PaperViewPage() {
                 </a>
               ) : (
                 <span
-                  title="Marking schemes require the Teacher Plus plan"
+                  title="Marking schemes require the Teacher Full plan"
                   className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
                 >
-                  <Lock className="h-4 w-4" /> Marking scheme (Teacher Plus)
+                  <Lock className="h-4 w-4" /> Marking scheme (Teacher Full)
                 </span>
               ))}
           </div>

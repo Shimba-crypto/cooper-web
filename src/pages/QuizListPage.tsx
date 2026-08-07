@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuizzes } from "../hooks/useQuizzes";
-import { useAuth } from "../context/AuthContext";
-import { hasPlan } from "../utils/plans";
 import QuizCard from "../components/QuizCard";
-import UpgradePrompt from "../components/UpgradePrompt";
 import Spinner from "../components/Spinner";
 import { Download, Check } from "lucide-react";
 import type { Quiz } from "../types";
@@ -29,7 +26,6 @@ export function getQuizOffline(id: string): Quiz | null {
 
 export default function QuizListPage() {
   const { quizzes, loading, error, retry } = useQuizzes();
-  const { planId } = useAuth();
   const [downloaded, setDownloaded] = useState<Set<string>>(() => {
     const set = new Set<string>();
     for (let i = 0; i < localStorage.length; i++) {
@@ -40,7 +36,6 @@ export default function QuizListPage() {
     }
     return set;
   });
-  const unlocked = hasPlan(planId, "student_plus");
 
   useEffect(() => {
     if (error) {
@@ -80,12 +75,6 @@ export default function QuizListPage() {
       <p className="mt-1 text-slate-600 dark:text-slate-400">
         Timed multiple-choice tests. Your scores count toward the leaderboard.
       </p>
-
-      {!unlocked && (
-        <div className="mt-6">
-          <UpgradePrompt required="student_plus" />
-        </div>
-      )}
 
       {error && (
         <div className="card mt-8 p-8 text-center">

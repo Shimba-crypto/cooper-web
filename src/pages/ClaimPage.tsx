@@ -4,7 +4,8 @@ import { Check, CheckCircle2, Gift, LogIn, XCircle } from "lucide-react";
 import { onValue, ref, runTransaction, set } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
-import { requiredPlanName } from "../utils/plans";
+import { PLANS, planName } from "../utils/plans";
+import type { BuyablePlanId } from "../utils/plans";
 import Spinner from "../components/Spinner";
 import type { ClaimCode } from "../types";
 
@@ -91,7 +92,13 @@ export default function ClaimPage() {
 
   if (!code) return <Spinner label="Checking claim code…" />;
 
-  const plan = requiredPlanName(code.planId);
+  const paid = PLANS[code.planId as BuyablePlanId];
+  const plan = paid ?? {
+    name: planName(code.planId),
+    price: "K0",
+    priceK: 0,
+    features: ["All quizzes and leaderboard features included"],
+  };
 
   return (
     <div className="mx-auto max-w-md px-4 py-16">

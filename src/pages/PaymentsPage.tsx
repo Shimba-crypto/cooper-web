@@ -13,7 +13,7 @@ const MERCHANT_DISPLAY = `+260 ${PAYMENT_MERCHANT_NUMBER.slice(1, 3)} ${PAYMENT_
 export default function PaymentsPage() {
   const { user, planId } = useAuth();
   const [method, setMethod] = useState<"mtn" | "airtel">("mtn");
-  const [plan, setPlan] = useState<PlanId>("student_plus");
+  const [plan, setPlan] = useState<PlanId>("teacher_full");
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
   const [submitted, setSubmitted] = useState<PaymentRecord | null>(null);
