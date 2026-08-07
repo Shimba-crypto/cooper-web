@@ -37,7 +37,7 @@ import { useConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import { notifyAllUsers } from "../utils/notify";
 import PlansOverview from "../components/PlansOverview";
-import { JOHNWEB_INVITE_URL, JOHNWEB_URL, PAYMENT_MERCHANT_NUMBER } from "../config";
+import { JOHNWEB_INVITE_URL, JOHNWEB_URL, PAYMENT_MERCHANT_NUMBER, API_URL } from "../config";
 import { PLANS, generateClaimToken, planName } from "../utils/plans";
 import type {
   Announcement,
@@ -1833,6 +1833,7 @@ function BroadcastTab() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("cooperweb:admin-api-key") ?? "");
   const [busy, setBusy] = useState(false);
   const { showToast, toast } = useToast();
 
@@ -1841,18 +1842,33 @@ function BroadcastTab() {
     if (!title.trim() || !body.trim()) return;
     setBusy(true);
     try {
-      await notifyAllUsers(db, {
-        type: "announcement",
-        title: title.trim(),
-        message: body.trim(),
-        link: url.trim() || undefined,
-      });
+      if (apiKey.trim()) {
+        const res = await fetch(`${API_URL}/api/broadcast`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": apiKey.trim() },
+          body: JSON.stringify({
+            title: title.trim(),
+            message: body.trim(),
+            link: url.trim() || undefined,
+          }),
+        });
+        if (!res.ok) throw new Error(`API ${res.status}`);
+        localStorage.setItem("cooperweb:admin-api-key", apiKey.trim());
+        showToast("Broadcast sent (in-app + push)");
+      } else {
+        await notifyAllUsers(db, {
+          type: "announcement",
+          title: title.trim(),
+          message: body.trim(),
+          link: url.trim() || undefined,
+        });
+        showToast("Broadcast sent to all users (in-app only)");
+      }
       setTitle("");
       setBody("");
       setUrl("");
-      showToast("Broadcast sent to all users");
     } catch {
-      showToast("Failed to send broadcast");
+      showToast("Failed to send broadcast — check the API key");
     } finally {
       setBusy(false);
     }
@@ -1862,9 +1878,16 @@ function BroadcastTab() {
     <div className="card max-w-2xl p-6">
       <h2 className="text-lg font-bold text-slate-900 dark:text-white">Bulk message</h2>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Sends an in-app notification to every registered student.
+        Sends an in-app notification (and web push) to every registered student via the API.
       </p>
       <form onSubmit={send} className="mt-4 space-y-3">
+        <input
+          className="input"
+          placeholder="API key (from Render env, stored only on this device)"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          type="password"
+        />
         <input
           className="input"
           placeholder="Title (e.g. New mock exams released)"
