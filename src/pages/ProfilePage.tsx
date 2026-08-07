@@ -1,19 +1,33 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Calendar, Coins, CreditCard, Pencil, Trophy, Users } from "lucide-react";
-import { onValue, ref } from "firebase/database";
+import { Calendar, Coins, CreditCard, Pencil, Star, Trophy, Users } from "lucide-react";
+import { onValue, ref, set } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { subscribeProfile, getProfiles } from "../data/fetchProfiles";
-import { marketItemById } from "../data/market";
+import { BANNER_GRADIENTS, ICONS, NAME_COLORS, STATUS_EMOJIS, marketItemById } from "../data/market";
 import Avatar from "../components/Avatar";
 import FollowButton from "../components/FollowButton";
 import Spinner from "../components/Spinner";
-import type { LeaderboardEntry, Profile, WalletItem } from "../types";
+import { useToast } from "../components/Toast";
+import { API_URL } from "../config";
+import type { DigitalCard, LeaderboardEntry, Profile, WalletItem } from "../types";
+
+interface Cosmetics {
+  uid: string;
+  avatarFrame?: string;
+  avatarOverlay?: string;
+  nameColor?: string;
+  statusEmoji?: string;
+  bannerColor?: string;
+  showcasedBadges?: string[];
+  showcasedCard?: boolean;
+}
 
 export default function ProfilePage() {
   const { uid } = useParams<{ uid: string }>();
   const { user, appUser } = useAuth();
+  const { showToast, toast } = useToast();
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [followerUids, setFollowerUids] = useState<string[]>([]);
   const [followingUids, setFollowingUids] = useState<string[]>([]);
@@ -21,7 +35,26 @@ export default function ProfilePage() {
   const [list, setList] = useState<"followers" | "following" | null>(null);
   const [listProfiles, setListProfiles] = useState<Profile[] | null>(null);
   const [wallet, setWallet] = useState<Record<string, WalletItem> | null>(null);
+  const [cosmetics, setCosmetics] = useState<Cosmetics | null>(null);
+  const [showcaseCard, setShowcaseCard] = useState<DigitalCard | null | undefined>(undefined);
   const isMe = user?.uid === uid;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_URL}/api/people`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const found = (data?.people ?? []).find((p: Cosmetics) => p.uid === uid);
+        setCosmetics(found ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setCosmetics(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [uid]);
 
   useEffect(() => {
     if (!uid) return;
@@ -65,6 +98,28 @@ export default function ProfilePage() {
     };
   }, [list, followerUids, followingUids]);
 
+  const showcaseVisible = isMe ? Boolean(appUser?.showcasedCard) : Boolean(cosmetics?.showcasedCard);
+
+  useEffect(() => {
+    if (!uid || !showcaseVisible) {
+      setShowcaseCard(undefined);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${API_URL}/api/card?uid=${encodeURIComponent(uid)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && data?.number) setShowcaseCard(data as DigitalCard);
+        else if (!cancelled) setShowcaseCard(null);
+      })
+      .catch(() => {
+        if (!cancelled) setShowcaseCard(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, showcaseVisible]);
+
   if (profile === undefined) return <Spinner label="Loading profile…" />;
 
   if (profile === null) {
@@ -79,19 +134,49 @@ export default function ProfilePage() {
     );
   }
 
-  const badges = wallet ? Object.values(wallet).filter((w) => marketItemById(w.itemId)?.kind === "badge") : [];
+  const frame = isMe ? appUser?.avatarFrame : cosmetics?.avatarFrame;
+  const overlay = isMe ? appUser?.avatarOverlay : cosmetics?.avatarOverlay;
+  const bannerColor = isMe ? appUser?.bannerColor : cosmetics?.bannerColor;
+  const nameColor = isMe ? appUser?.nameColor : cosmetics?.nameColor;
+  const statusEmoji = isMe
+    ? appUser?.statusEmoji
+      ? STATUS_EMOJIS[appUser.statusEmoji] ?? ""
+      : ""
+    : cosmetics?.statusEmoji
+      ? STATUS_EMOJIS[cosmetics.statusEmoji] ?? ""
+      : "";
+
+  const ownedBadges = wallet
+    ? Object.values(wallet).filter((w) => marketItemById(w.itemId)?.kind === "badge")
+    : [];
+  const showcased = isMe ? (appUser?.showcasedBadges ?? []) : (cosmetics?.showcasedBadges ?? []);
+
+  const toggleShowcase = async (itemId: string) => {
+    if (!user || !isMe) return;
+    const current = appUser?.showcasedBadges ?? [];
+    const next = current.includes(itemId) ? current.filter((b) => b !== itemId) : [...current, itemId];
+    try {
+      await set(ref(db, `users/${user.uid}/showcasedBadges`), next);
+    } catch {
+      showToast("Could not update showcase.");
+    }
+  };
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      {toast}
       <div className="card overflow-hidden">
-        <div className="h-24 bg-gradient-to-br from-emerald-700 to-teal-900" />
+        <div
+          className={`h-24 bg-gradient-to-br ${BANNER_GRADIENTS[bannerColor ?? ""] ?? "from-emerald-700 to-teal-900"}`}
+        />
         <div className="px-5 pb-8 sm:px-8">
           <div className="-mt-10 flex flex-wrap items-end justify-between gap-3">
             <Avatar
               src={profile.avatarUrl}
               name={profile.displayName}
               size={88}
-              frame={isMe ? appUser?.avatarFrame : undefined}
+              frame={frame}
+              overlay={overlay}
               className="ring-4 ring-white dark:ring-slate-900"
             />
             <div className="flex flex-wrap items-center gap-2 pb-1">
@@ -104,8 +189,9 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          <h1 className="mt-4 text-2xl font-extrabold text-slate-900 dark:text-white">
-            {profile.displayName}
+          <h1 className="mt-4 flex flex-wrap items-center gap-2 text-2xl font-extrabold text-slate-900 dark:text-white">
+            <span style={nameColor ? { color: NAME_COLORS[nameColor] } : undefined}>{profile.displayName}</span>
+            {statusEmoji && <span>{statusEmoji}</span>}
           </h1>
           {profile.bio && <p className="mt-1 text-slate-600 dark:text-slate-400">{profile.bio}</p>}
 
@@ -144,24 +230,62 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {isMe && (
-            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800/50">
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800/50">
+            {isMe && (
               <span className="flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
                 <Coins className="h-4 w-4 text-amber-500" />
                 <strong className="text-amber-700 dark:text-amber-400">{appUser?.coins ?? 0}</strong> CooperCoins
               </span>
+            )}
+            {isMe && (
               <Link to="/card" className="flex items-center gap-1 text-sm font-semibold text-emerald-600 hover:underline">
                 <CreditCard className="h-4 w-4" /> My card
               </Link>
-              {badges.length > 0 && (
-                <span className="flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
-                  {badges.map((b) => (
-                    <span key={b.itemId} title={marketItemById(b.itemId)?.name}>
-                      {marketItemById(b.itemId)?.icon}
-                    </span>
-                  ))}
+            )}
+            {ownedBadges.length > 0 && (
+              <span className="flex flex-wrap items-center gap-2">
+                {ownedBadges.map((b) => {
+                  const item = marketItemById(b.itemId);
+                  if (!item) return null;
+                  const Icon = ICONS[item.icon] ?? Star;
+                  const isShown = showcased.includes(b.itemId);
+                  return (
+                    <button
+                      key={b.itemId}
+                      onClick={() => toggleShowcase(b.itemId)}
+                      disabled={!isMe}
+                      title={`${item.name}${isMe ? (isShown ? " — click to remove from showcase" : " — click to showcase") : ""}`}
+                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                        isShown
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                          : "bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
+                      } ${isMe ? "hover:opacity-80" : "cursor-default"}`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {item.name}
+                      {isMe && <Star className={`h-3 w-3 ${isShown ? "fill-amber-400 text-amber-400" : ""}`} />}
+                    </button>
+                  );
+                })}
+              </span>
+            )}
+          </div>
+
+          {showcaseVisible && showcaseCard && (
+            <div className="mt-4 rounded-xl bg-gradient-to-br from-emerald-800 via-emerald-600 to-teal-500 p-4 text-white shadow-lg">
+              <div className="flex items-start justify-between">
+                <span className="text-lg font-extrabold tracking-wide">
+                  Cooper<span className="text-white/80">Web</span>
                 </span>
-              )}
+                <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-bold">CooperCard</span>
+              </div>
+              <p className="mt-4 font-mono text-sm tracking-[0.2em] sm:text-lg">{showcaseCard.number}</p>
+              <p className="mt-2 text-xs font-semibold text-white/90">
+                {showcaseCard.holderName}
+              </p>
+              <Link to={`/card`} className="mt-3 inline-block text-xs font-semibold text-white underline">
+                {isMe ? "Manage my card" : "See my card"}
+              </Link>
             </div>
           )}
 

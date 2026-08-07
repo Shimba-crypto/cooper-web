@@ -1,20 +1,50 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Coins, Lock, ShoppingBag, Sparkles } from "lucide-react";
+import { BadgePercent, Coins, Lock, ShoppingBag, Sparkles } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import Spinner from "../components/Spinner";
 import RedeemCard from "../components/RedeemCard";
 import { useToast } from "../components/Toast";
-import { MARKET_ITEMS, marketItemById } from "../data/market";
+import { ICONS, MARKET_ITEMS, marketItemById } from "../data/market";
 import { API_URL } from "../config";
-import type { WalletItem } from "../types";
+import type { MarketItem, WalletItem } from "../types";
+
+interface ServerItem {
+  id: string;
+  price: number;
+  basePrice: number;
+  kind: string;
+  grants?: string[];
+  salePercent?: number;
+  expiresAt?: number;
+  expired?: boolean;
+}
+
+const SECTIONS: { key: string; title: string }[] = [
+  { key: "frame", title: "Avatar Rings" },
+  { key: "overlay", title: "Avatar Accessories" },
+  { key: "name_color", title: "Name Colours" },
+  { key: "status", title: "Status Tags" },
+  { key: "banner", title: "Profile Banners" },
+  { key: "badge", title: "Badges" },
+  { key: "card_design", title: "Card Designs" },
+  { key: "chip", title: "Card Chips" },
+  { key: "pattern", title: "Card Patterns" },
+  { key: "confetti", title: "Extras" },
+  { key: "timer_skin", title: "Timer Skins" },
+  { key: "lb_glow", title: "Leaderboard" },
+  { key: "multiplier", title: "Coin Boosters" },
+  { key: "bundle", title: "Bundles" },
+];
 
 export default function MarketPage() {
   const { user, appUser } = useAuth();
   const { showToast, toast } = useToast();
   const [owned, setOwned] = useState<Record<string, WalletItem> | null>(null);
+  const [serverItems, setServerItems] = useState<Record<string, ServerItem> | null>(null);
+  const [sale, setSale] = useState<{ percent: number; until: number | null } | null>(null);
   const [busyItem, setBusyItem] = useState<string | null>(null);
 
   const balance = appUser?.coins ?? 0;
@@ -27,6 +57,18 @@ export default function MarketPage() {
     });
     return unsubscribe;
   }, [user]);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/market/items`)
+      .then((res) => res.json())
+      .then((data) => {
+        const byId: Record<string, ServerItem> = {};
+        for (const item of data.items ?? []) byId[item.id] = item;
+        setServerItems(byId);
+        setSale(data.sale ?? null);
+      })
+      .catch(() => setServerItems({}));
+  }, []);
 
   const buy = async (itemId: string) => {
     if (!user) return;
@@ -50,6 +92,27 @@ export default function MarketPage() {
     } finally {
       setBusyItem(null);
     }
+  };
+
+  const effectivePrice = (item: MarketItem): number => {
+    const server = serverItems?.[item.id];
+    if (server && server.salePercent) return server.price;
+    return item.price;
+  };
+  const isOnSale = (item: MarketItem): boolean => {
+    const server = serverItems?.[item.id];
+    return Boolean(server?.salePercent);
+  };
+  const limitedInfo = (item: MarketItem): ServerItem | undefined => {
+    const server = serverItems?.[item.id];
+    return server?.expiresAt ? server : undefined;
+  };
+  const countdown = (until: number) => {
+    const ms = Math.max(0, until - Date.now());
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
   };
 
   if (!user) {
@@ -77,7 +140,7 @@ export default function MarketPage() {
         <div className="flex-1">
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">The Market</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Spend your CooperCoins on frames, card designs and badges.
+            Spend your CooperCoins on frames, styles, badges and boosts.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2 dark:bg-amber-950/40">
@@ -109,46 +172,99 @@ export default function MarketPage() {
             </Link>
           </div>
 
+          {sale && (
+            <div className="mt-4 flex items-center gap-2 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+              <BadgePercent className="h-5 w-5 shrink-0" />
+              <span>
+                <strong>FLASH SALE</strong> — {sale.percent}% off everything
+                {sale.until && (
+                  <>
+                    {" "}
+                    · ends in <span className="font-bold">{countdown(sale.until)}</span>
+                  </>
+                )}
+                !
+              </span>
+            </div>
+          )}
+
           {owned === null ? (
             <Spinner label="Loading the Market…" />
           ) : (
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {MARKET_ITEMS.map((item) => {
-                const alreadyOwned = Boolean(owned[item.id]);
-                const affordable = balance >= item.price;
-                return (
-                  <div key={item.id} className="card flex flex-col p-5">
-                    <div className="flex items-start justify-between">
-                      <span className="text-3xl" aria-hidden>
-                        {item.icon}
-                      </span>
-                      {alreadyOwned && (
-                        <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">
-                          Owned
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="mt-3 font-bold text-slate-900 dark:text-white">{item.name}</h3>
-                    <p className="mt-1 flex-1 text-sm text-slate-500 dark:text-slate-400">{item.description}</p>
-                    <div className="mt-4 flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1 font-extrabold text-amber-600 dark:text-amber-400">
-                        <Coins className="h-4 w-4" />
-                        {item.price}
-                      </span>
-                      <button
-                        onClick={() => buy(item.id)}
-                        disabled={alreadyOwned || busyItem !== null || !affordable}
-                        className={`btn-primary !px-4 !py-1.5 text-sm disabled:opacity-60 ${
-                          alreadyOwned ? "!bg-slate-300 dark:!bg-slate-700" : ""
-                        }`}
-                      >
-                        {alreadyOwned ? "Owned" : busyItem === item.id ? "Buying…" : "Buy"}
-                      </button>
-                    </div>
+            SECTIONS.map((section) => {
+              const items = MARKET_ITEMS.filter((item) => item.kind === section.key);
+              if (items.length === 0) return null;
+              return (
+                <section key={section.key} className="mt-8">
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">{section.title}</h2>
+                  <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {items.map((item) => {
+                      const alreadyOwned = Boolean(owned[item.id]);
+                      const Icon = ICONS[item.icon] ?? Sparkles;
+                      const limited = limitedInfo(item);
+                      const onSale = isOnSale(item);
+                      const price = effectivePrice(item);
+                      const affordable = balance >= price;
+                      const soldOut = limited?.expired === true;
+                      return (
+                        <div key={item.id} className={`card flex flex-col p-5 ${soldOut ? "opacity-60" : ""}`}>
+                          <div className="flex items-start justify-between">
+                            <span
+                              className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                                onSale ? "bg-rose-100 text-rose-600 dark:bg-rose-950/60" : "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60"
+                              }`}
+                            >
+                              <Icon className="h-5 w-5" />
+                            </span>
+                            <div className="flex flex-col items-end gap-1">
+                              {alreadyOwned && (
+                                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-semibold text-white">
+                                  Owned
+                                </span>
+                              )}
+                              {limited && (
+                                <span className="rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
+                                  {soldOut ? "SOLD OUT" : `LIMITED · ${countdown(limited.expiresAt!)} left`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <h3 className="mt-3 font-bold text-slate-900 dark:text-white">{item.name}</h3>
+                          <p className="mt-1 flex-1 text-sm text-slate-500 dark:text-slate-400">{item.description}</p>
+                          {item.grants && (
+                            <p className="mt-1 text-xs font-semibold text-violet-600 dark:text-violet-400">
+                              Includes: {item.grants.map((g) => marketItemById(g)?.name ?? g).join(" + ")}
+                            </p>
+                          )}
+                          <div className="mt-4 flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1 font-extrabold text-amber-600 dark:text-amber-400">
+                              <Coins className="h-4 w-4" />
+                              {onSale ? (
+                                <>
+                                  <span className="text-sm font-semibold text-slate-400 line-through">{item.price}</span>
+                                  <span>{price}</span>
+                                </>
+                              ) : (
+                                price
+                              )}
+                            </span>
+                            <button
+                              onClick={() => buy(item.id)}
+                              disabled={alreadyOwned || busyItem !== null || !affordable || soldOut}
+                              className={`btn-primary !px-4 !py-1.5 text-sm disabled:opacity-60 ${
+                                alreadyOwned ? "!bg-slate-300 dark:!bg-slate-700" : ""
+                              }`}
+                            >
+                              {alreadyOwned ? "Owned" : busyItem === item.id ? "Buying…" : soldOut ? "Sold out" : "Buy"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
+                </section>
+              );
+            })
           )}
         </>
       )}

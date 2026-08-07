@@ -6,6 +6,7 @@ import { db } from "../firebase";
 import { useQuizzes } from "../hooks/useQuizzes";
 import { getQuizOffline } from "./QuizListPage";
 import { useAuth } from "../context/AuthContext";
+import { TIMER_CLASSES } from "../data/market";
 import { API_URL } from "../config";
 import type { Quiz } from "../types";
 import { canAccessPremiumQuiz } from "../utils/redeem";
@@ -240,6 +241,14 @@ export default function QuizTakePage() {
 
   if (phase === "results" && results) {
     const percentage = Math.round((score! / quiz.questions.length) * 100);
+    const confetti =
+      appUser?.confettiOwned &&
+      Array.from({ length: 50 }, (_, i) => ({
+        left: Math.random() * 100,
+        delay: Math.random() * 1.2,
+        duration: 2.4 + Math.random() * 2,
+        color: ["#fbbf24", "#34d399", "#60a5fa", "#f472b6", "#a78bfa"][i % 5],
+      }));
     return (
       <>
         {toast}
@@ -254,17 +263,33 @@ export default function QuizTakePage() {
         )}
       <div className="mx-auto max-w-3xl px-4 py-10">
         <div className="card overflow-hidden">
-          <div className="bg-gradient-to-br from-emerald-700 to-teal-900 px-5 py-8 text-center text-white sm:px-8 sm:py-10">
-            <p className="text-sm font-semibold uppercase tracking-widest text-emerald-300">Result</p>
-            <p className="mt-2 text-4xl font-extrabold sm:text-5xl">{score!}/{quiz.questions.length}</p>
-            <p className="mt-2 text-lg font-semibold text-emerald-100">
-              {percentage}% — {percentage >= 75 ? "Excellent!" : percentage >= 50 ? "Good job!" : "Keep practicing!"}
-            </p>
-            {earnedCC !== null && earnedCC > 0 && (
-              <p className="mt-3 inline-block rounded-full bg-amber-400/90 px-4 py-1.5 text-sm font-extrabold text-amber-950 shadow">
-                +{earnedCC} CooperCoins earned!
+          <div className="relative overflow-hidden bg-gradient-to-br from-emerald-700 to-teal-900 px-5 py-8 text-center text-white sm:px-8 sm:py-10">
+            {confetti &&
+              confetti.map((piece, i) => (
+                <span
+                  key={i}
+                  aria-hidden
+                  className="confetti-piece"
+                  style={{
+                    left: `${piece.left}%`,
+                    backgroundColor: piece.color,
+                    animationDelay: `${piece.delay}s`,
+                    animationDuration: `${piece.duration}s`,
+                  }}
+                />
+              ))}
+            <div className="relative">
+              <p className="text-sm font-semibold uppercase tracking-widest text-emerald-300">Result</p>
+              <p className="mt-2 text-4xl font-extrabold sm:text-5xl">{score!}/{quiz.questions.length}</p>
+              <p className="mt-2 text-lg font-semibold text-emerald-100">
+                {percentage}% — {percentage >= 75 ? "Excellent!" : percentage >= 50 ? "Good job!" : "Keep practicing!"}
               </p>
-            )}
+              {earnedCC !== null && earnedCC > 0 && (
+                <p className="mt-3 inline-block rounded-full bg-amber-400/90 px-4 py-1.5 text-sm font-extrabold text-amber-950 shadow">
+                  +{earnedCC} CooperCoins earned!
+                </p>
+              )}
+            </div>
           </div>
           <div className="space-y-6 p-5 sm:p-8">
             {results.map(({ question, chosen, correct }, i) => (
@@ -341,7 +366,9 @@ export default function QuizTakePage() {
           className={`rounded-lg px-3 py-1 font-mono text-lg font-bold tabular-nums ${
             secondsLeft <= 300
               ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400"
-              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+              : appUser?.timerSkin
+                ? `${TIMER_CLASSES[appUser.timerSkin] ?? "text-emerald-700 dark:text-emerald-400"} bg-slate-100 dark:bg-slate-900`
+                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
           }`}
         >
           ⏱ {format(secondsLeft)}

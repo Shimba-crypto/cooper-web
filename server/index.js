@@ -75,17 +75,98 @@ const MOMO_ENABLED = !!(MOMO.subscriptionKey && MOMO.userId && MOMO.userKey);
 const PLAN_PRICES = { teacher_full: 200 };
 
 const COINS_PER_CORRECT = 1;
+const STREAK_BONUS_PER_DAY = 2;
+const STREAK_BONUS_MAX = 20;
+const FIRST_OF_DAY_BONUS = 5;
+const PERFECT_BONUS = 10;
+const REFERRAL_BONUS = 20;
+const GIFT_DAILY_CAP = 50;
 
 const MARKET_ITEMS = {
   "frame-emerald": { name: "Emerald Avatar Ring", price: 30, kind: "frame" },
   "frame-sunset": { name: "Sunset Avatar Ring", price: 60, kind: "frame" },
   "frame-gold": { name: "Gold Avatar Ring", price: 120, kind: "frame" },
+  "frame-neon": { name: "Neon Avatar Ring", price: 90, kind: "frame" },
+  "frame-ice": { name: "Ice Avatar Ring", price: 100, kind: "frame" },
+  "frame-rainbow": { name: "Rainbow Avatar Ring", price: 180, kind: "frame" },
+  "frame-royal": { name: "Royal Avatar Ring", price: 150, kind: "frame" },
+  "frame-glow": { name: "Glow Boost", price: 60, kind: "frame" },
+  "frame-pulse": { name: "Pulsing Ring", price: 140, kind: "frame" },
+  "name-emerald": { name: "Emerald Name", price: 40, kind: "name_color" },
+  "name-sky": { name: "Sky Name", price: 50, kind: "name_color" },
+  "name-sunset": { name: "Sunset Name", price: 70, kind: "name_color" },
+  "name-gold": { name: "Gold Name", price: 120, kind: "name_color" },
   "design-ocean": { name: "Ocean Card Design", price: 60, kind: "card_design" },
   "design-sunset": { name: "Sunset Card Design", price: 80, kind: "card_design" },
   "design-midnight": { name: "Midnight Card Design", price: 150, kind: "card_design" },
+  "design-forest": { name: "Forest Card Design", price: 90, kind: "card_design" },
+  "design-crimson": { name: "Crimson Card Design", price: 100, kind: "card_design" },
+  "design-royal": { name: "Royal Card Design", price: 120, kind: "card_design" },
+  "design-goldfoil": { name: "Gold Foil Card Design", price: 200, kind: "card_design" },
+  "design-holo": { name: "Holographic Card Design", price: 250, kind: "card_design" },
+  "chip-gold": { name: "Gold Chip", price: 80, kind: "chip" },
+  "chip-silver": { name: "Silver Chip", price: 50, kind: "chip" },
+  "pattern-dots": { name: "Dot Pattern", price: 70, kind: "pattern" },
+  "pattern-waves": { name: "Wave Pattern", price: 70, kind: "pattern" },
+  "pattern-grid": { name: "Grid Pattern", price: 70, kind: "pattern" },
   "badge-quizmaster": { name: "Quiz Master Badge", price: 200, kind: "badge" },
   "badge-perfect": { name: "Perfect 10 Badge", price: 250, kind: "badge" },
+  "badge-rising-star": { name: "Rising Star Badge", price: 150, kind: "badge" },
+  "badge-bookworm": { name: "Bookworm Badge", price: 180, kind: "badge" },
+  "badge-speed": { name: "Speed Demon Badge", price: 250, kind: "badge" },
+  "badge-sharp": { name: "Sharp Shooter Badge", price: 300, kind: "badge" },
+  "badge-grind": { name: "Grind Master Badge", price: 400, kind: "badge" },
+  "badge-teacher": { name: "Teacher's Pet Badge", price: 350, kind: "badge" },
+  "badge-scholar": { name: "Scholar Badge", price: 450, kind: "badge" },
+  "badge-legend": { name: "Legend Badge", price: 500, kind: "badge" },
+  "overlay-cap": { name: "Graduation Cap", price: 80, kind: "overlay" },
+  "overlay-headphones": { name: "Headphones", price: 100, kind: "overlay" },
+  "overlay-crown": { name: "Crown", price: 150, kind: "overlay" },
+  "banner-sky": { name: "Sky Banner", price: 40, kind: "banner" },
+  "banner-violet": { name: "Violet Banner", price: 50, kind: "banner" },
+  "banner-sunset": { name: "Sunset Banner", price: 60, kind: "banner" },
+  "banner-gold": { name: "Gold Banner", price: 120, kind: "banner" },
+  "status-fire": { name: "On Fire Status", price: 50, kind: "status" },
+  "status-star": { name: "Star Status", price: 50, kind: "status" },
+  "status-bolt": { name: "Bolt Status", price: 80, kind: "status" },
+  "status-book": { name: "Book Status", price: 50, kind: "status" },
+  "status-crown": { name: "Crown Status", price: 120, kind: "status" },
+  "confetti-gold": { name: "Result Confetti", price: 100, kind: "confetti" },
+  "timer-neon": { name: "Neon Timer", price: 60, kind: "timer_skin" },
+  "timer-ocean": { name: "Ocean Timer", price: 80, kind: "timer_skin" },
+  "lb-glow": { name: "Leaderboard Glow", price: 150, kind: "lb_glow" },
+  "mult-2x-day": { name: "2x Coins (24h)", price: 100, kind: "multiplier", mult: 2, durationHours: 24 },
+  "mult-3x-hour": { name: "3x Coins (1h)", price: 60, kind: "multiplier", mult: 3, durationHours: 1 },
+  "bundle-starter": { name: "Starter Bundle", price: 150, kind: "bundle", grants: ["frame-emerald", "badge-rising-star"] },
+  "bundle-star": { name: "Star Bundle", price: 350, kind: "bundle", grants: ["frame-gold", "design-goldfoil", "badge-quizmaster"] },
+  "bundle-scholar": { name: "Scholar Bundle", price: 500, kind: "bundle", grants: ["design-royal", "badge-scholar", "name-gold", "banner-gold"] },
 };
+
+function applyItemEffect(updates, uid, itemId) {
+  const item = MARKET_ITEMS[itemId];
+  if (!item) return;
+  if (item.kind === "frame") updates[`users/${uid}/avatarFrame`] = itemId;
+  if (item.kind === "name_color") updates[`users/${uid}/nameColor`] = itemId;
+  if (item.kind === "card_design") updates[`users/${uid}/cardDesign`] = itemId;
+  if (item.kind === "chip") updates[`users/${uid}/chipColor`] = itemId;
+  if (item.kind === "pattern") updates[`users/${uid}/cardPattern`] = itemId;
+  if (item.kind === "overlay") updates[`users/${uid}/avatarOverlay`] = itemId;
+  if (item.kind === "banner") updates[`users/${uid}/bannerColor`] = itemId;
+  if (item.kind === "status") updates[`users/${uid}/statusEmoji`] = itemId;
+  if (item.kind === "confetti") updates[`users/${uid}/confettiOwned`] = true;
+  if (item.kind === "timer_skin") updates[`users/${uid}/timerSkin`] = itemId;
+  if (item.kind === "lb_glow") updates[`users/${uid}/lbGlow`] = true;
+  if (item.kind === "multiplier") {
+    updates[`users/${uid}/coinsMultiplier`] = {
+      mult: item.mult ?? 2,
+      expiresAt: Date.now() + (item.durationHours ?? 24) * 3600000,
+    };
+  }
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 const CARD_NUMBER_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -381,6 +462,7 @@ app.get("/api/quizzes", async (_req, res) => {
 });
 
 // GET /api/people — public member directory: uid, displayName, avatarUrl, role, planId, bio
+// plus public cosmetics (frame, overlay, name color, status emoji, badges) and coin balance.
 // (never exposes emails or other private fields; users node is admin-only in the DB rules)
 app.get("/api/people", async (_req, res) => {
   try {
@@ -401,11 +483,90 @@ app.get("/api/people", async (_req, res) => {
           role: u.role ?? "user",
           planId: u.plan?.id ?? "free",
           bio: p.bio ?? "",
+          coins: Number(u.coins) || 0,
+          avatarFrame: u.avatarFrame ?? "",
+          avatarOverlay: u.avatarOverlay ?? "",
+          nameColor: u.nameColor ?? "",
+          statusEmoji: u.statusEmoji ?? "",
+          bannerColor: u.bannerColor ?? "",
+          showcasedBadges: u.showcasedBadges ?? [],
+          showcasedCard: Boolean(u.showcasedCard),
         };
       })
       .filter((p) => p.displayName)
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
     res.json({ count: people.length, people });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/gift  body: { uid, toUid, amount }
+// Public: send CooperCoins to another member. Daily cap enforced; server deducts
+// from sender and credits recipient with a ledger entry each.
+app.post("/api/gift", async (req, res) => {
+  const { uid, toUid, amount } = req.body ?? {};
+  const amt = Number(amount);
+  if (!uid || !toUid || !Number.isInteger(amt) || amt <= 0) {
+    return res.status(400).json({ error: "Need uid, toUid and a positive integer amount" });
+  }
+  if (uid === toUid) return res.status(400).json({ error: "You cannot gift yourself" });
+  if (amt > GIFT_DAILY_CAP) return res.status(400).json({ error: `Gifts are capped at ${GIFT_DAILY_CAP} CC per day` });
+  try {
+    const [senderSnap, recipientSnap, givenSnap] = await Promise.all([
+      db.ref(`users/${uid}`).once("value"),
+      db.ref(`users/${toUid}`).once("value"),
+      db.ref(`gifts/${uid}`).once("value"),
+    ]);
+    const sender = senderSnap.val();
+    const recipient = recipientSnap.val();
+    if (!sender || !recipient) return res.status(404).json({ error: "User not found" });
+    if ((Number(sender.coins) || 0) < amt) return res.status(400).json({ error: "Not enough CooperCoins" });
+    const today = todayKey();
+    const givenToday = (givenSnap.val() ?? {})[today] ?? 0;
+    if (givenToday + amt > GIFT_DAILY_CAP) {
+      return res.status(400).json({ error: `Gift limit reached (${GIFT_DAILY_CAP} CC per day)` });
+    }
+    const giftId = `gift-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    await db.ref().update({
+      [`users/${uid}/coins`]: ServerValue.increment(-amt),
+      [`users/${toUid}/coins`]: ServerValue.increment(amt),
+      [`gifts/${uid}/${today}`]: ServerValue.increment(amt),
+      [`coinsLedger/${uid}/${giftId}`]: { amount: -amt, type: "gift_sent", at: Date.now(), ref: toUid },
+      [`coinsLedger/${toUid}/${giftId}`]: { amount: amt, type: "gift_received", at: Date.now(), ref: uid },
+    });
+    res.json({ ok: true, gifted: amt, balance: (Number(sender.coins) || 0) - amt });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/coins  body: { uid, amount, reason? } — admin only.
+// Manually add or remove CooperCoins (positive = credit, negative = debit).
+app.post("/api/admin/coins", requireAdmin, async (req, res) => {
+  const { uid, amount, reason } = req.body ?? {};
+  const amt = Number(amount);
+  if (!uid || !Number.isFinite(amt) || amt === 0) {
+    return res.status(400).json({ error: "Need uid and a non-zero amount" });
+  }
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    if (!userSnap.exists()) return res.status(404).json({ error: "User not found" });
+    const balance = (await db.ref(`users/${uid}/coins`).once("value")).val() ?? 0;
+    if (amt < 0 && balance + amt < 0) {
+      return res.status(400).json({ error: "Balance would go negative" });
+    }
+    const adjId = `adj-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    await db.ref().update({
+      [`users/${uid}/coins`]: ServerValue.increment(amt),
+      [`coinsLedger/${uid}/${adjId}`]: {
+        amount: amt,
+        type: "admin",
+        at: Date.now(),
+        ref: reason ?? "manual adjustment",
+      },
+    });
+    res.json({ ok: true, adjusted: amt, balance: balance + amt });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -571,6 +732,8 @@ app.post("/api/redeem", async (req, res) => {
 // Public: awards CooperCoins for a completed quiz attempt. Server-verified: the
 // result must exist in results/<uid>/<quizId> with a matching score, and each
 // submissionId pays at most once (every attempt pays).
+// Bonuses: coin multiplier items, daily streak, first quiz of the day,
+// perfect score, and a one-time referral reward for the referrer.
 app.post("/api/earn", async (req, res) => {
   const { uid, quizId, submissionId, score, total } = req.body ?? {};
   if (!uid || !quizId || !submissionId) {
@@ -581,9 +744,10 @@ app.post("/api/earn", async (req, res) => {
     return res.status(400).json({ error: "Invalid score" });
   }
   try {
-    const [resultSnap, alreadySnap] = await Promise.all([
+    const [resultSnap, alreadySnap, userSnap] = await Promise.all([
       db.ref(`results/${uid}/${quizId}`).once("value"),
       db.ref(`coinsLedger/${uid}/${submissionId}`).once("value"),
+      db.ref(`users/${uid}`).once("value"),
     ]);
     const result = resultSnap.val();
     if (!result || Number(result.score) !== correct) {
@@ -592,62 +756,153 @@ app.post("/api/earn", async (req, res) => {
     if (alreadySnap.exists()) {
       return res.json({ ok: true, earned: 0, balance: (await db.ref(`users/${uid}/coins`).once("value")).val() ?? 0 });
     }
-    const earned = correct * COINS_PER_CORRECT;
-    await db.ref().update({
+
+    const user = userSnap.val() ?? {};
+    let earned = correct * COINS_PER_CORRECT;
+    const bonuses = [];
+
+    const multiplier = user.coinsMultiplier;
+    if (multiplier && multiplier.expiresAt > Date.now() && multiplier.mult > 1) {
+      earned = Math.round(earned * multiplier.mult);
+      bonuses.push(`x${multiplier.mult} multiplier`);
+    }
+
+    const today = todayKey();
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    let streakCount = Number(user.streakCount) || 0;
+    if (user.lastEarnDate === today) {
+      // already earned today — no streak change
+    } else {
+      streakCount = user.lastEarnDate === yesterday ? streakCount + 1 : 1;
+      const firstBonus = FIRST_OF_DAY_BONUS;
+      earned += firstBonus;
+      bonuses.push("first quiz of the day");
+      const streakBonus = Math.min(streakCount, STREAK_BONUS_MAX / STREAK_BONUS_PER_DAY) * STREAK_BONUS_PER_DAY;
+      if (streakCount > 1) {
+        earned += streakBonus;
+        bonuses.push(`${streakCount}-day streak`);
+      }
+    }
+
+    if (Number(total) > 0 && correct === Number(total)) {
+      earned += PERFECT_BONUS;
+      bonuses.push("perfect score");
+    }
+
+    const updates = {
       [`users/${uid}/coins`]: ServerValue.increment(earned),
       [`users/${uid}/coinsEarned`]: ServerValue.increment(earned),
+      [`users/${uid}/streakCount`]: streakCount,
+      [`users/${uid}/lastEarnDate`]: today,
       [`coinsLedger/${uid}/${submissionId}`]: {
         amount: earned,
         type: "quiz",
         at: Date.now(),
         ref: quizId,
       },
-    });
+    };
+
+    const referredBy = user.referredBy;
+    if (referredBy?.referrerUid && !referredBy.rewardedAt) {
+      const referrerUid = referredBy.referrerUid;
+      const referralId = `ref-${uid}-${Date.now()}`;
+      updates[`users/${referrerUid}/coins`] = ServerValue.increment(REFERRAL_BONUS);
+      updates[`users/${referrerUid}/coinsEarned`] = ServerValue.increment(REFERRAL_BONUS);
+      updates[`coinsLedger/${referrerUid}/${referralId}`] = {
+        amount: REFERRAL_BONUS,
+        type: "referral",
+        at: Date.now(),
+        ref: uid,
+      };
+      updates[`users/${uid}/referredBy/rewardedAt`] = Date.now();
+    }
+
+    await db.ref().update(updates);
     const balance = (await db.ref(`users/${uid}/coins`).once("value")).val() ?? 0;
-    res.json({ ok: true, earned, balance });
+    res.json({ ok: true, earned, balance, bonuses });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/market/items — public catalog (also available client-side in src/data/market.ts)
-app.get("/api/market/items", (_req, res) => {
-  res.json(Object.values(MARKET_ITEMS));
+// GET /api/market/items — public catalog with sale prices and limited-item expiry applied
+app.get("/api/market/items", async (_req, res) => {
+  try {
+    const configSnap = await db.ref("marketConfig").once("value");
+    const config = configSnap.val() ?? {};
+    const now = Date.now();
+    const saleActive = config.salePercent > 0 && (!config.saleUntil || config.saleUntil > now);
+    const items = Object.entries(MARKET_ITEMS).map(([id, item]) => {
+      const limited = config.items?.[id]?.expiresAt;
+      const expired = limited && limited < now;
+      const price = saleActive ? Math.round(item.price * (1 - config.salePercent / 100)) : item.price;
+      return {
+        id,
+        name: item.name,
+        price,
+        basePrice: item.price,
+        kind: item.kind,
+        ...(item.grants ? { grants: item.grants } : {}),
+        ...(item.durationHours ? { durationHours: item.durationHours } : {}),
+        ...(saleActive ? { salePercent: config.salePercent } : {}),
+        ...(limited ? { expiresAt: limited, expired: Boolean(expired) } : {}),
+      };
+    });
+    res.json({ items, sale: saleActive ? { percent: config.salePercent, until: config.saleUntil ?? null } : null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/market/purchase  body: { uid, itemId }
-// Public: spends CooperCoins on a market item. Server checks marketAccess and
-// balance, deducts coins, and records ownership in walletItems.
+// Public: spends CooperCoins on a market item. Server checks marketAccess,
+// balance, sale price and expiry, deducts coins, and records ownership.
 app.post("/api/market/purchase", async (req, res) => {
   const { uid, itemId } = req.body ?? {};
   if (!uid || !itemId) return res.status(400).json({ error: "Need uid and itemId" });
   const item = MARKET_ITEMS[itemId];
   if (!item) return res.status(404).json({ error: "Unknown item" });
   try {
-    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const [userSnap, configSnap, ownedSnap] = await Promise.all([
+      db.ref(`users/${uid}`).once("value"),
+      db.ref("marketConfig").once("value"),
+      db.ref(`walletItems/${uid}/${itemId}`).once("value"),
+    ]);
     const user = userSnap.val();
     if (!user) return res.status(404).json({ error: "User not found" });
     if (!user.marketAccess) return res.status(403).json({ error: "Market locked — redeem a code to unlock it." });
-    const balance = Number(user.coins) || 0;
-    if (balance < item.price) return res.status(400).json({ error: `Not enough CooperCoins (need ${item.price}).` });
-    const ownedSnap = await db.ref(`walletItems/${uid}/${itemId}`).once("value");
+    const config = configSnap.val() ?? {};
+    const now = Date.now();
+    const limited = config.items?.[itemId]?.expiresAt;
+    if (limited && limited < now) return res.status(400).json({ error: "This limited item is no longer available." });
     if (ownedSnap.exists()) return res.status(400).json({ error: "You already own this item." });
+
+    const saleActive = config.salePercent > 0 && (!config.saleUntil || config.saleUntil > now);
+    const price = saleActive ? Math.round(item.price * (1 - config.salePercent / 100)) : item.price;
+    const balance = Number(user.coins) || 0;
+    if (balance < price) return res.status(400).json({ error: `Not enough CooperCoins (need ${price}).` });
 
     const purchaseId = `pur-${Date.now()}-${randomUUID().slice(0, 6)}`;
     const updates = {
-      [`users/${uid}/coins`]: ServerValue.increment(-item.price),
-      [`walletItems/${uid}/${itemId}`]: { itemId, acquiredAt: Date.now() },
+      [`users/${uid}/coins`]: ServerValue.increment(-price),
+      [`walletItems/${uid}/${itemId}`]: { itemId, acquiredAt: now },
       [`coinsLedger/${uid}/${purchaseId}`]: {
-        amount: -item.price,
+        amount: -price,
         type: "purchase",
-        at: Date.now(),
+        at: now,
         ref: itemId,
       },
     };
-    if (item.kind === "frame") updates[`users/${uid}/avatarFrame`] = itemId;
-    if (item.kind === "card_design") updates[`users/${uid}/cardDesign`] = itemId;
+    if (item.kind === "bundle" && item.grants) {
+      for (const grantedId of item.grants) {
+        updates[`walletItems/${uid}/${grantedId}`] = { itemId: grantedId, acquiredAt: now };
+        applyItemEffect(updates, uid, grantedId);
+      }
+    } else {
+      applyItemEffect(updates, uid, itemId);
+    }
     await db.ref().update(updates);
-    res.json({ ok: true, balance: balance - item.price, item });
+    res.json({ ok: true, balance: balance - price, item });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

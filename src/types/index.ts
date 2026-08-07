@@ -50,11 +50,27 @@ export interface AppUser {
   plan?: UserPlan;
   avatarUrl?: string;
   avatarFrame?: string;
+  avatarOverlay?: string;
+  nameColor?: string;
+  statusEmoji?: string;
+  bannerColor?: string;
+  confettiOwned?: boolean;
+  timerSkin?: string;
+  lbGlow?: boolean;
+  coinsMultiplier?: { mult: number; expiresAt: number };
   coins?: number;
   coinsEarned?: number;
   marketAccess?: boolean;
   card?: DigitalCard;
   cardDesign?: string;
+  cardPattern?: string;
+  chipColor?: string;
+  cardNickname?: string;
+  cardPin?: string;
+  showcasedCard?: boolean;
+  showcasedBadges?: string[];
+  streakCount?: number;
+  lastEarnDate?: string;
   unlockedQuizIds?: string[];
   referredBy?: { referrerUid: string; code: string; createdAt: number };
   discount?: { percent: number; code: string; redeemedAt: number };
@@ -246,7 +262,7 @@ export interface RedeemRecord {
   redeemedAt: number;
 }
 
-export type CardTier = "bronze" | "silver" | "gold";
+export type CardTier = "bronze" | "silver" | "gold" | "platinum" | "diamond";
 
 export interface DigitalCard {
   number: string;
@@ -255,7 +271,21 @@ export interface DigitalCard {
   design?: string;
 }
 
-export type WalletItemKind = "frame" | "card_design" | "badge";
+export type WalletItemKind =
+  | "frame"
+  | "card_design"
+  | "badge"
+  | "name_color"
+  | "overlay"
+  | "banner"
+  | "status"
+  | "confetti"
+  | "timer_skin"
+  | "lb_glow"
+  | "multiplier"
+  | "chip"
+  | "pattern"
+  | "bundle";
 
 export interface WalletItem {
   itemId: string;
@@ -269,11 +299,13 @@ export interface MarketItem {
   price: number;
   icon: string;
   kind: WalletItemKind;
+  grants?: string[];
+  durationHours?: number;
 }
 
 export interface CoinsLedgerEntry {
   amount: number;
-  type: "quiz" | "code" | "purchase";
+  type: "quiz" | "code" | "purchase" | "gift_sent" | "gift_received" | "admin" | "referral";
   at: number;
   ref?: string;
 }

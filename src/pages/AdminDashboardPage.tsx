@@ -21,6 +21,7 @@ import {
   Search,
   Send,
   ShieldAlert,
+  Store,
   Trash2,
   Trophy,
   Upload,
@@ -42,6 +43,7 @@ import PlansOverview from "../components/PlansOverview";
 import { JOHNWEB_INVITE_URL, JOHNWEB_URL, PAYMENT_MERCHANT_NUMBER, API_URL } from "../config";
 import { PLANS, generateClaimToken, planName, type BuyablePlanId } from "../utils/plans";
 import { generateCode } from "../utils/redeem";
+import { MARKET_ITEMS, marketItemById } from "../data/market";
 import type {
   Announcement,
   AppUser,
@@ -59,7 +61,7 @@ import type {
   PaymentRecord,
 } from "../types";
 
-type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "codes" | "payments" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "johnweb";
+type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "codes" | "payments" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "market" | "johnweb";
 
 const PAPER_TYPES: PaperType[] = ["Paper 1", "Paper 2", "Practical"];
 const SUBJECTS = [
@@ -131,6 +133,7 @@ export default function AdminDashboardPage() {
     { id: "export", label: "Export", icon: Download },
     { id: "broadcast", label: "Broadcast", icon: Send },
     { id: "import", label: "Import", icon: Upload },
+    { id: "market", label: "Market", icon: Store },
     { id: "johnweb", label: "John Web", icon: ExternalLink },
   ];
 
@@ -178,6 +181,7 @@ export default function AdminDashboardPage() {
         {tab === "export" && <ExportTab />}
         {tab === "broadcast" && <BroadcastTab />}
         {tab === "import" && <ImportTab />}
+        {tab === "market" && <MarketTab />}
         {tab === "johnweb" && <JohnWebTab />}
       </div>
     </div>
@@ -2424,6 +2428,263 @@ function RedeemCodesTab() {
                 </div>
                 <button onClick={() => removeCode(c.code)} className="text-xs font-semibold text-red-500 hover:underline">
                   Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MarketTab() {
+  const { showToast, toast } = useToast();
+  const [users, setUsers] = useState<Record<string, AppUser> | null>(null);
+  const [coinTarget, setCoinTarget] = useState("");
+  const [coinAmount, setCoinAmount] = useState("");
+  const [coinReason, setCoinReason] = useState("");
+  const [coinBusy, setCoinBusy] = useState(false);
+
+  const [salePercent, setSalePercent] = useState("");
+  const [saleHours, setSaleHours] = useState("");
+  const [saleBusy, setSaleBusy] = useState(false);
+
+  const [limitedItem, setLimitedItem] = useState("");
+  const [limitedHours, setLimitedHours] = useState("");
+  const [limitedBusy, setLimitedBusy] = useState(false);
+  const [limited, setLimited] = useState<Record<string, { expiresAt: number }> | null>(null);
+
+  useEffect(() => {
+    const unsub = onValue(ref(db, "users"), (snapshot) => setUsers(snapshot.val() ?? {}));
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const unsub = onValue(ref(db, "marketConfig/items"), (snapshot) => setLimited(snapshot.val() ?? {}));
+    return unsub;
+  }, []);
+
+  const adjustCoins = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!coinTarget) return;
+    setCoinBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/coins`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: coinTarget, amount: Number(coinAmount), reason: coinReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) showToast(data?.error ?? "Adjustment failed");
+      else {
+        showToast(`Adjusted by ${data.adjusted} CC — new balance ${data.balance}.`);
+        setCoinAmount("");
+        setCoinReason("");
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? `Adjustment failed: ${err.message}` : "Adjustment failed");
+    } finally {
+      setCoinBusy(false);
+    }
+  };
+
+  const setFlashSale = async (e: FormEvent) => {
+    e.preventDefault();
+    const percent = Number(salePercent);
+    const hours = Number(saleHours);
+    if (!Number.isFinite(percent) || percent <= 0 || percent > 90) {
+      showToast("Sale percent must be between 1 and 90.");
+      return;
+    }
+    setSaleBusy(true);
+    try {
+      if (hours > 0) {
+        await set(ref(db, "marketConfig"), {
+          salePercent: percent,
+          saleUntil: Date.now() + hours * 3600000,
+        });
+        showToast(`Flash sale started: ${percent}% off for ${hours}h.`);
+      } else {
+        await set(ref(db, "marketConfig/salePercent"), null);
+        await set(ref(db, "marketConfig/saleUntil"), null);
+        showToast("Flash sale cleared.");
+      }
+      setSalePercent("");
+      setSaleHours("");
+    } catch (err) {
+      showToast(err instanceof Error ? `Sale failed: ${err.message}` : "Sale failed");
+    } finally {
+      setSaleBusy(false);
+    }
+  };
+
+  const makeLimited = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!limitedItem || !limitedHours) return;
+    const hours = Number(limitedHours);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      showToast("Enter a number of hours.");
+      return;
+    }
+    setLimitedBusy(true);
+    try {
+      await set(ref(db, `marketConfig/items/${limitedItem}/expiresAt`), Date.now() + hours * 3600000);
+      showToast(`${limitedItem} is now limited (${hours}h).`);
+      setLimitedHours("");
+    } catch (err) {
+      showToast(err instanceof Error ? `Failed: ${err.message}` : "Failed");
+    } finally {
+      setLimitedBusy(false);
+    }
+  };
+
+  const clearLimited = async (itemId: string) => {
+    await remove(ref(db, `marketConfig/items/${itemId}`));
+    showToast("Limited status removed.");
+  };
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      {toast}
+      <div className="card p-6">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Adjust CooperCoins</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Add or remove CC from any account (positive adds, negative removes).
+        </p>
+        <form onSubmit={adjustCoins} className="mt-4 space-y-3">
+          <div>
+            <label className="label">Student</label>
+            {users === null ? (
+              <Spinner label="Loading users…" />
+            ) : (
+              <select
+                value={coinTarget}
+                onChange={(e) => setCoinTarget(e.target.value)}
+                className="input"
+              >
+                <option value="">Select a student…</option>
+                {Object.entries(users)
+                  .sort((a, b) => (a[1].displayName ?? "").localeCompare(b[1].displayName ?? ""))
+                  .map(([uid, u]) => (
+                    <option key={uid} value={uid}>
+                      {u.displayName || u.email} — {u.coins ?? 0} CC
+                    </option>
+                  ))}
+              </select>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="label">Amount (CC)</label>
+              <input
+                type="number"
+                value={coinAmount}
+                onChange={(e) => setCoinAmount(e.target.value)}
+                placeholder="e.g. 50 or -20"
+                className="input"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="label">Reason (optional)</label>
+              <input
+                value={coinReason}
+                onChange={(e) => setCoinReason(e.target.value)}
+                placeholder="e.g. weekly prize"
+                className="input"
+              />
+            </div>
+          </div>
+          <button type="submit" disabled={coinBusy || !coinTarget} className="btn-primary disabled:opacity-60">
+            {coinBusy ? "Adjusting…" : "Adjust coins"}
+          </button>
+        </form>
+      </div>
+
+      <div className="card p-6">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Flash sale</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Put the whole Market on sale for a limited time.
+        </p>
+        <form onSubmit={setFlashSale} className="mt-4 space-y-3">
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="label">Percent off</label>
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={salePercent}
+                onChange={(e) => setSalePercent(e.target.value)}
+                placeholder="e.g. 25"
+                className="input"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="label">Duration (hours, 0 = clear)</label>
+              <input
+                type="number"
+                min={0}
+                value={saleHours}
+                onChange={(e) => setSaleHours(e.target.value)}
+                placeholder="e.g. 24"
+                className="input"
+              />
+            </div>
+          </div>
+          <button type="submit" disabled={saleBusy} className="btn-primary disabled:opacity-60">
+            {saleBusy ? "Saving…" : saleHours && Number(saleHours) > 0 ? "Start flash sale" : "Clear flash sale"}
+          </button>
+        </form>
+      </div>
+
+      <div className="card p-6 lg:col-span-2">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Limited items</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Make an item limited-time: it shows a countdown and disappears when it expires.
+        </p>
+        <form onSubmit={makeLimited} className="mt-4 flex flex-wrap items-end gap-3">
+          <div className="min-w-56 flex-1">
+            <label className="label">Item</label>
+            <select value={limitedItem} onChange={(e) => setLimitedItem(e.target.value)} className="input">
+              <option value="">Select an item…</option>
+              {MARKET_ITEMS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.id})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="w-40">
+            <label className="label">Duration (hours)</label>
+            <input
+              type="number"
+              min={1}
+              value={limitedHours}
+              onChange={(e) => setLimitedHours(e.target.value)}
+              placeholder="e.g. 72"
+              className="input"
+            />
+          </div>
+          <button type="submit" disabled={limitedBusy || !limitedItem} className="btn-primary disabled:opacity-60">
+            {limitedBusy ? "Saving…" : "Make limited"}
+          </button>
+        </form>
+        {limited && Object.keys(limited).length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {Object.entries(limited).map(([itemId, info]) => (
+              <li key={itemId} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-4 py-2.5 text-sm dark:bg-slate-800/50">
+                <div>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">
+                    {marketItemById(itemId)?.name ?? itemId}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Expires {new Date(info.expiresAt).toLocaleString()}
+                    {info.expiresAt < Date.now() ? " — already expired" : ""}
+                  </p>
+                </div>
+                <button onClick={() => clearLimited(itemId)} className="text-xs font-semibold text-red-500 hover:underline">
+                  Remove
                 </button>
               </li>
             ))}
