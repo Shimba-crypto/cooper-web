@@ -46,6 +46,9 @@ export default function MarketPage() {
   const [serverItems, setServerItems] = useState<Record<string, ServerItem> | null>(null);
   const [sale, setSale] = useState<{ percent: number; until: number | null } | null>(null);
   const [busyItem, setBusyItem] = useState<string | null>(null);
+  const [pinFor, setPinFor] = useState<string | null>(null);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
 
   const balance = appUser?.coins ?? 0;
   const unlocked = appUser?.marketAccess === true;
@@ -70,28 +73,54 @@ export default function MarketPage() {
       .catch(() => setServerItems({}));
   }, []);
 
-  const buy = async (itemId: string) => {
+  const buy = async (itemId: string, pin?: string) => {
     if (!user) return;
     const item = marketItemById(itemId);
     if (!item) return;
     setBusyItem(itemId);
+    setPinError(null);
     try {
       const res = await fetch(`${API_URL}/api/market/purchase`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid: user.uid, itemId }),
+        body: JSON.stringify({ uid: user.uid, itemId, pin }),
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 403 && data?.error?.includes("PIN")) {
+          setPinError("Wrong PIN — try again.");
+          setBusyItem(null);
+          return;
+        }
         showToast(data?.error ?? `Purchase failed (${res.status})`);
       } else {
         showToast(`${item.name} is yours! ${data.balance} CC left.`);
+        setPinFor(null);
+        setPinInput("");
       }
     } catch (err) {
       showToast(err instanceof Error ? `Purchase failed: ${err.message}` : "Purchase failed — try again.");
     } finally {
       setBusyItem(null);
     }
+  };
+
+  const startBuy = (itemId: string) => {
+    if (appUser?.cardPin) {
+      setPinFor(itemId);
+      setPinInput("");
+      setPinError(null);
+    } else {
+      buy(itemId);
+    }
+  };
+
+  const confirmPinPurchase = () => {
+    if (!/^\d{4}$/.test(pinInput)) {
+      setPinError("Enter your 4-digit card PIN.");
+      return;
+    }
+    if (pinFor) buy(pinFor, pinInput);
   };
 
   const effectivePrice = (item: MarketItem): number => {
@@ -188,6 +217,39 @@ export default function MarketPage() {
             </div>
           )}
 
+          {pinFor && (
+            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+              <p className="flex items-center gap-1.5 text-sm font-bold text-amber-800 dark:text-amber-300">
+                <Lock className="h-4 w-4" /> Enter your card PIN to buy {marketItemById(pinFor)?.name}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={pinInput}
+                  onChange={(e) => {
+                    setPinInput(e.target.value.replace(/\D/g, ""));
+                    setPinError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") confirmPinPurchase();
+                  }}
+                  placeholder="4-digit PIN"
+                  className="input !w-36"
+                  autoFocus
+                />
+                <button onClick={confirmPinPurchase} disabled={busyItem !== null} className="btn-primary !px-4 !py-1.5 text-sm disabled:opacity-60">
+                  {busyItem === pinFor ? "Buying…" : "Confirm purchase"}
+                </button>
+                <button onClick={() => { setPinFor(null); setPinInput(""); setPinError(null); }} className="btn-secondary !px-4 !py-1.5 text-sm">
+                  Cancel
+                </button>
+                {pinError && <span className="text-sm font-semibold text-red-600 dark:text-red-400">{pinError}</span>}
+              </div>
+            </div>
+          )}
+
           {owned === null ? (
             <Spinner label="Loading the Market…" />
           ) : (
@@ -249,7 +311,7 @@ export default function MarketPage() {
                               )}
                             </span>
                             <button
-                              onClick={() => buy(item.id)}
+                              onClick={() => startBuy(item.id)}
                               disabled={alreadyOwned || busyItem !== null || !affordable || soldOut}
                               className={`btn-primary !px-4 !py-1.5 text-sm disabled:opacity-60 ${
                                 alreadyOwned ? "!bg-slate-300 dark:!bg-slate-700" : ""

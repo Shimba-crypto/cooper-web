@@ -868,11 +868,13 @@ app.get("/api/market/items", async (_req, res) => {
   }
 });
 
-// POST /api/market/purchase  body: { uid, itemId }
+// POST /api/market/purchase  body: { uid, itemId, pin? }
 // Public: spends CooperCoins on a market item. Server checks marketAccess,
 // balance, sale price and expiry, deducts coins, and records ownership.
+// If the user has set a card PIN, it must be provided and match — purchases
+// are PIN-gated.
 app.post("/api/market/purchase", async (req, res) => {
-  const { uid, itemId } = req.body ?? {};
+  const { uid, itemId, pin } = req.body ?? {};
   if (!uid || !itemId) return res.status(400).json({ error: "Need uid and itemId" });
   const item = MARKET_ITEMS[itemId];
   if (!item) return res.status(404).json({ error: "Unknown item" });
@@ -885,6 +887,11 @@ app.post("/api/market/purchase", async (req, res) => {
     const user = userSnap.val();
     if (!user) return res.status(404).json({ error: "User not found" });
     if (!user.marketAccess) return res.status(403).json({ error: "Market locked — redeem a code to unlock it." });
+    if (user.cardPin) {
+      if (typeof pin !== "string" || pin !== user.cardPin) {
+        return res.status(403).json({ error: "Enter the correct card PIN to complete this purchase." });
+      }
+    }
     const config = configSnap.val() ?? {};
     const now = Date.now();
     const limited = config.items?.[itemId]?.expiresAt;
