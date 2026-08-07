@@ -744,10 +744,11 @@ app.post("/api/earn", async (req, res) => {
     return res.status(400).json({ error: "Invalid score" });
   }
   try {
-    const [resultSnap, alreadySnap, userSnap] = await Promise.all([
+    const [resultSnap, alreadySnap, userSnap, walletSnap] = await Promise.all([
       db.ref(`results/${uid}/${quizId}`).once("value"),
       db.ref(`coinsLedger/${uid}/${submissionId}`).once("value"),
       db.ref(`users/${uid}`).once("value"),
+      db.ref(`walletItems/${uid}`).once("value"),
     ]);
     const result = resultSnap.val();
     if (!result || Number(result.score) !== correct) {
@@ -761,10 +762,23 @@ app.post("/api/earn", async (req, res) => {
     let earned = correct * COINS_PER_CORRECT;
     const bonuses = [];
 
-    const multiplier = user.coinsMultiplier;
-    if (multiplier && multiplier.expiresAt > Date.now() && multiplier.mult > 1) {
-      earned = Math.round(earned * multiplier.mult);
-      bonuses.push(`x${multiplier.mult} multiplier`);
+    // Multiplier is verified against owned wallet items (purchase provenance),
+    // never trusted from the user node — clients are rules-blocked from writing
+    // coinsMultiplier, but server verification makes tampering impossible anyway.
+    const wallet = walletSnap.val() ?? {};
+    const now = Date.now();
+    let mult = 1;
+    for (const entry of Object.values(wallet)) {
+      const item = entry.itemId ? MARKET_ITEMS[entry.itemId] : undefined;
+      if (item?.kind === "multiplier" && item.durationHours && entry.acquiredAt) {
+        if (entry.acquiredAt + item.durationHours * 3600000 > now && (item.mult ?? 1) > mult) {
+          mult = item.mult ?? 1;
+        }
+      }
+    }
+    if (mult > 1) {
+      earned = Math.round(earned * mult);
+      bonuses.push(`x${mult} multiplier`);
     }
 
     const today = todayKey();
@@ -926,6 +940,28 @@ app.get("/api/card", async (req, res) => {
       await db.ref(`users/${uid}/card`).set(card);
     }
     res.json(card);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/card/pin  body: { uid, pin } — sets (4 digits) or removes (empty string)
+// the card PIN. Clients are rules-blocked from writing cardPin directly.
+app.post("/api/card/pin", async (req, res) => {
+  const { uid, pin } = req.body ?? {};
+  if (!uid) return res.status(400).json({ error: "Need uid" });
+  if (typeof pin !== "string" || (pin !== "" && !/^\d{4}$/.test(pin))) {
+    return res.status(400).json({ error: "PIN must be exactly 4 digits (or empty to remove)" });
+  }
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    if (!userSnap.exists()) return res.status(404).json({ error: "User not found" });
+    if (pin === "") {
+      await db.ref(`users/${uid}/cardPin`).set(null);
+    } else {
+      await db.ref(`users/${uid}/cardPin`).set(pin);
+    }
+    res.json({ ok: true, hasPin: pin !== "" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

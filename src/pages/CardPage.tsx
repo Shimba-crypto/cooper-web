@@ -183,10 +183,22 @@ export default function CardPage() {
       showToast("PIN must be exactly 4 digits.");
       return;
     }
-    await set(ref(db, `users/${user.uid}/cardPin`), pin);
-    setPin("");
-    setUnlocked(true);
-    showToast("Card locked with PIN.");
+    try {
+      const res = await fetch(`${API_URL}/api/card/pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: user.uid, pin }),
+      });
+      const data = await res.json();
+      if (!res.ok) showToast(data?.error ?? "Could not set PIN.");
+      else {
+        setPin("");
+        setUnlocked(true);
+        showToast("Card locked with PIN.");
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? `Could not set PIN: ${err.message}` : "Could not set PIN.");
+    }
   };
 
   const verifyPin = () => {
@@ -201,11 +213,23 @@ export default function CardPage() {
   };
 
   const removePin = async () => {
-    await set(ref(db, `users/${user.uid}/cardPin`), null);
-    setUnlocked(false);
-    setRemovingPin(false);
-    setShowFullNumber(false);
-    showToast("PIN removed.");
+    try {
+      const res = await fetch(`${API_URL}/api/card/pin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: user.uid, pin: "" }),
+      });
+      const data = await res.json();
+      if (!res.ok) showToast(data?.error ?? "Could not remove PIN.");
+      else {
+        setUnlocked(false);
+        setRemovingPin(false);
+        setShowFullNumber(false);
+        showToast("PIN removed.");
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? `Could not remove PIN: ${err.message}` : "Could not remove PIN.");
+    }
   };
 
   const toggleShowcase = async () => {

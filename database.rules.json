@@ -13,7 +13,7 @@
       ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
-        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (auth.uid === $uid && newData.child('coins').val() === data.child('coins').val() && newData.child('coinsEarned').val() === data.child('coinsEarned').val()))"
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (auth.uid === $uid && newData.child('coins').val() === data.child('coins').val() && newData.child('coinsEarned').val() === data.child('coinsEarned').val() && newData.child('coinsMultiplier').val() === data.child('coinsMultiplier').val() && newData.child('marketAccess').val() === data.child('marketAccess').val() && newData.child('referredBy').val() === data.child('referredBy').val() && newData.child('lastEarnDate').val() === data.child('lastEarnDate').val() && newData.child('streakCount').val() === data.child('streakCount').val() && newData.child('cardPin').val() === data.child('cardPin').val()))"
       }
     },
     "coinsLedger": {
