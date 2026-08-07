@@ -5,13 +5,14 @@ import { onValue, ref, set } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { PLANS, planName } from "../utils/plans";
+import RedeemCard from "../components/RedeemCard";
 import { PAYMENT_MERCHANT_NUMBER } from "../config";
 import type { PaymentRecord, PlanId } from "../types";
 
 const MERCHANT_DISPLAY = `+260 ${PAYMENT_MERCHANT_NUMBER.slice(1, 3)} ${PAYMENT_MERCHANT_NUMBER.slice(3, 6)} ${PAYMENT_MERCHANT_NUMBER.slice(6)}`;
 
 export default function PaymentsPage() {
-  const { user, planId } = useAuth();
+  const { user, appUser, planId } = useAuth();
   const [method, setMethod] = useState<"mtn" | "airtel">("mtn");
   const [plan, setPlan] = useState<PlanId>("teacher_full");
   const [phone, setPhone] = useState("");
@@ -22,6 +23,7 @@ export default function PaymentsPage() {
   const [searchParams] = useSearchParams();
 
   const buyablePlans = Object.values(PLANS);
+  const discount = appUser?.discount;
 
   useEffect(() => {
     const planParam = searchParams.get("plan");
@@ -49,6 +51,12 @@ export default function PaymentsPage() {
   }
 
   const selectedPlan = buyablePlans.find((p) => p.id === plan);
+  const basePrice = selectedPlan?.priceK ?? 0;
+  const effectivePrice = discount ? Math.round((basePrice * (100 - discount.percent)) / 100) : basePrice;
+
+  const removeDiscount = async () => {
+    await set(ref(db, `users/${user?.uid}/discount`), null);
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -60,13 +68,14 @@ export default function PaymentsPage() {
       uid: user.uid,
       email: user.email ?? "",
       planId: plan,
-      amount: selectedPlan?.priceK ?? 0,
+      amount: effectivePrice,
       method,
       phone: phone.trim(),
       status: "pending",
       createdAt: Date.now(),
     };
     await set(ref(db, `payments/${user.uid}/${id}`), record);
+    if (discount) await set(ref(db, `users/${user.uid}/discount`), null);
     setSubmitted(record);
     setBusy(false);
   };
@@ -87,12 +96,27 @@ export default function PaymentsPage() {
         </div>
       </div>
 
+      <div className="mt-6">
+        <RedeemCard />
+      </div>
+
+      {discount && (
+        <div className="mt-4 card flex flex-wrap items-center justify-between gap-3 border-emerald-400 p-4">
+          <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+            {discount.percent}% discount active (code {discount.code}) — applied at checkout.
+          </p>
+          <button type="button" onClick={removeDiscount} className="text-xs font-semibold text-red-500 hover:underline">
+            Remove discount
+          </button>
+        </div>
+      )}
+
       {submitted ? (
         <div className="mt-6 card p-6 text-center">
           <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-600" />
           <h2 className="mt-3 text-xl font-bold text-slate-900 dark:text-white">Payment request sent!</h2>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            Send <span className="font-bold">K{selectedPlan?.price}</span> to the number below using{" "}
+            Send <span className="font-bold">K{effectivePrice}</span> to the number below using{" "}
             <span className="font-bold">{method === "mtn" ? "MTN" : "Airtel"} Money</span>, then we'll verify and
             activate your {selectedPlan?.name} plan.
           </p>
@@ -149,7 +173,11 @@ export default function PaymentsPage() {
             </label>
           </div>
           <button type="submit" disabled={busy} className="btn-primary w-full disabled:opacity-60">
-            {busy ? "Submitting…" : `Pay K${selectedPlan?.price} and request activation`}
+            {busy
+              ? "Submitting…"
+              : discount
+                ? `Pay K${effectivePrice} (was K${basePrice}) and request activation`
+                : `Pay K${effectivePrice} and request activation`}
           </button>
           <p className="text-xs text-slate-400">
             Current plan: <span className="font-semibold">{planId}</span>. After payment we manually confirm and activate — usually within 24 hours.

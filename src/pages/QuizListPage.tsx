@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuizzes } from "../hooks/useQuizzes";
+import { useAuth } from "../context/AuthContext";
 import QuizCard from "../components/QuizCard";
+import RedeemCard from "../components/RedeemCard";
 import Spinner from "../components/Spinner";
-import { Download, Check } from "lucide-react";
+import { Download, Check, Lock } from "lucide-react";
+import { canAccessPremiumQuiz } from "../utils/redeem";
 import type { Quiz } from "../types";
 
 const OFFLINE_KEY = (id: string) => `cooperweb:offline-quiz:${id}`;
@@ -26,6 +30,7 @@ export function getQuizOffline(id: string): Quiz | null {
 
 export default function QuizListPage() {
   const { quizzes, loading, error, retry } = useQuizzes();
+  const { planId, appUser } = useAuth();
   const [downloaded, setDownloaded] = useState<Set<string>>(() => {
     const set = new Set<string>();
     for (let i = 0; i < localStorage.length; i++) {
@@ -69,6 +74,10 @@ export default function QuizListPage() {
 
   const offlineQuizzes = loadAllOffline();
 
+  const canOpen = (q: Quiz) => canAccessPremiumQuiz(planId, appUser?.unlockedQuizIds, q);
+  const accessible = quizzes.filter(canOpen);
+  const lockedPremium = quizzes.filter((q) => q.premium && !canOpen(q));
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
       <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Quizzes</h1>
@@ -106,13 +115,13 @@ export default function QuizListPage() {
       {!error &&
         (loading ? (
           <Spinner label="Loading quizzes…" />
-        ) : quizzes.length === 0 ? (
+        ) : accessible.length === 0 ? (
           <div className="card mt-8 p-12 text-center text-slate-500 dark:text-slate-400">
             No quizzes yet. If you're an admin, add quizzes from the Admin dashboard.
           </div>
         ) : (
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {quizzes.map((quiz) => (
+            {accessible.map((quiz) => (
               <div key={quiz.id} className="relative">
                 <QuizCard quiz={quiz} />
                 <button
@@ -130,6 +139,36 @@ export default function QuizListPage() {
             ))}
           </div>
         ))}
+
+      {!error && lockedPremium.length > 0 && (
+        <div className="mt-10">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Premium quizzes</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Extra mock exams for Teacher Full members or quiz pack codes.
+          </p>
+          <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {lockedPremium.map((quiz) => (
+              <div key={quiz.id} className="card flex h-full flex-col p-5 opacity-80">
+                <div className="flex items-center justify-between">
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-400">
+                    <Lock className="mr-1 inline h-3 w-3" /> Premium
+                  </span>
+                </div>
+                <h3 className="mt-3 font-bold text-slate-900 dark:text-white">{quiz.title}</h3>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {quiz.subject} · {quiz.year} · {quiz.questions.length} questions
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 max-w-xl">
+            <RedeemCard />
+            <Link to="/payments" className="btn-secondary mt-3 w-full">
+              Get Teacher Full instead (K200)
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

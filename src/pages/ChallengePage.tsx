@@ -5,12 +5,13 @@ import { onValue, ref, set } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { useQuizzes } from "../hooks/useQuizzes";
+import { canAccessPremiumQuiz } from "../utils/redeem";
 import Spinner from "../components/Spinner";
 import type { Challenge, ChallengePlayer } from "../types";
 
 export default function ChallengePage() {
   const { cid } = useParams<{ cid: string }>();
-  const { user, appUser } = useAuth();
+  const { user, appUser, planId } = useAuth();
   const { quizzes, loading: quizzesLoading } = useQuizzes();
   const navigate = useNavigate();
 
@@ -106,7 +107,7 @@ export default function ChallengePage() {
             <span className="label">Quiz</span>
             <select className="input" value={chosenQuiz} onChange={(e) => setChosenQuiz(e.target.value)}>
               <option value="">Select a quiz…</option>
-              {quizzes.map((q) => (
+              {quizzes.filter((q) => canAccessPremiumQuiz(planId, appUser?.unlockedQuizIds, q)).map((q) => (
                 <option key={q.id} value={q.id}>{q.title}</option>
               ))}
             </select>

@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Award, CheckCircle2, ListChecks, Play, Share2, XCircle } from "lucide-react";
+import { ArrowLeft, Award, CheckCircle2, ListChecks, Lock, Play, Share2, XCircle } from "lucide-react";
 import { ref, runTransaction, set } from "firebase/database";
 import { db } from "../firebase";
 import { useQuizzes } from "../hooks/useQuizzes";
 import { getQuizOffline } from "./QuizListPage";
 import { useAuth } from "../context/AuthContext";
 import type { Quiz } from "../types";
+import { canAccessPremiumQuiz } from "../utils/redeem";
+import RedeemCard from "../components/RedeemCard";
 import Spinner from "../components/Spinner";
 import { useConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
@@ -24,7 +26,7 @@ export default function QuizTakePage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const { quizzes, loading, error, retry } = useQuizzes();
-  const { user, appUser } = useAuth();
+  const { user, appUser, planId } = useAuth();
   const navigate = useNavigate();
 
   const stateQuiz = (location.state as { quiz?: Quiz } | null)?.quiz;
@@ -146,6 +148,29 @@ export default function QuizTakePage() {
         <Link to="/quizzes" className="mt-4 inline-block font-semibold text-emerald-600 hover:underline">
           ← Back to quizzes
         </Link>
+      </div>
+    );
+  }
+
+  if (quiz.premium && !canAccessPremiumQuiz(planId, appUser?.unlockedQuizIds, quiz)) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16">
+        <Link to="/quizzes" className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 hover:underline">
+          <ArrowLeft className="h-4 w-4" /> All quizzes
+        </Link>
+        <div className="card mt-4 p-8 text-center">
+          <Lock className="mx-auto h-10 w-10 text-amber-500" />
+          <h1 className="mt-4 text-xl font-bold text-slate-900 dark:text-white">{quiz.title}</h1>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            This premium quiz needs the Teacher Full plan or a quiz pack code.
+          </p>
+          <div className="mx-auto mt-6 max-w-sm">
+            <RedeemCard />
+            <Link to="/payments" className="btn-secondary mt-3 w-full">
+              Get Teacher Full (K200)
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }

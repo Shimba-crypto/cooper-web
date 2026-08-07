@@ -8,6 +8,7 @@ import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useAuth } from "../context/AuthContext";
 import { planName } from "../utils/plans";
 import PlanBadge from "../components/PlanBadge";
+import RedeemCard from "../components/RedeemCard";
 import Spinner from "../components/Spinner";
 import type { QuizResult } from "../types";
 
@@ -85,6 +86,9 @@ export default function DashboardPage() {
             </p>
           </div>
           <PlanBadge planId={planId} />
+        </div>
+        <div className="mt-5">
+          <RedeemCard />
         </div>
       </section>
 

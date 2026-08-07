@@ -25,6 +25,7 @@ import {
   Trophy,
   Upload,
   Users,
+  Ticket,
 } from "lucide-react";
 import { onValue, ref, remove, set, update } from "firebase/database";
 import { db } from "../firebase";
@@ -39,6 +40,7 @@ import { notifyAllUsers } from "../utils/notify";
 import PlansOverview from "../components/PlansOverview";
 import { JOHNWEB_INVITE_URL, JOHNWEB_URL, PAYMENT_MERCHANT_NUMBER, API_URL } from "../config";
 import { PLANS, generateClaimToken, planName, type BuyablePlanId } from "../utils/plans";
+import { generateCode } from "../utils/redeem";
 import type {
   Announcement,
   AppUser,
@@ -50,10 +52,12 @@ import type {
   Question,
   Quiz,
   QuizResult,
+  RedeemCode,
+  RedeemCodeType,
   Report,
 } from "../types";
 
-type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "johnweb";
+type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "codes" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "johnweb";
 
 const PAPER_TYPES: PaperType[] = ["Paper 1", "Paper 2", "Practical"];
 const SUBJECTS = [
@@ -114,6 +118,7 @@ export default function AdminDashboardPage() {
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "announcements", label: "Announcements", icon: Megaphone },
     { id: "plans", label: "Plans", icon: Gift },
+    { id: "codes", label: "Redeem Codes", icon: Ticket },
     { id: "users", label: "Users", icon: Users },
     { id: "leaderboard", label: "Leaderboard", icon: Trophy },
     { id: "groups", label: "Groups", icon: Database },
@@ -159,6 +164,7 @@ export default function AdminDashboardPage() {
         {tab === "analytics" && <AnalyticsTab />}
         {tab === "announcements" && <AnnouncementsTab />}
         {tab === "plans" && <PlansTab />}
+        {tab === "codes" && <RedeemCodesTab />}
         {tab === "users" && <UsersTab />}
         {tab === "leaderboard" && <LeaderboardTab />}
         {tab === "groups" && <GroupsManagerTab />}
@@ -399,6 +405,7 @@ const emptyQuizForm = {
   subject: SUBJECTS[0],
   year: new Date().getFullYear(),
   durationMinutes: 30,
+  premium: false,
   questions: [structuredClone(emptyQuestion)],
 };
 
@@ -417,6 +424,7 @@ function QuizzesTab() {
       subject: quiz.subject,
       year: quiz.year,
       durationMinutes: quiz.durationMinutes,
+      premium: quiz.premium ?? false,
       questions: structuredClone(quiz.questions),
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -456,6 +464,7 @@ function QuizzesTab() {
         year: Number(form.year),
         durationMinutes: Number(form.durationMinutes),
         questions,
+        ...(form.premium ? { premium: true } : {}),
       });
       if (!editingId) {
         await notifyAllUsers(db, {
@@ -506,6 +515,17 @@ function QuizzesTab() {
             <label className="block">
               <span className="label">Duration (minutes)</span>
               <input className="input" type="number" min={1} required value={form.durationMinutes} onChange={(e) => setForm({ ...form, durationMinutes: Number(e.target.value) })} />
+            </label>
+            <label className="flex items-end gap-2 pb-1">
+              <input
+                type="checkbox"
+                checked={form.premium}
+                onChange={(e) => setForm({ ...form, premium: e.target.checked })}
+                className="h-4 w-4 accent-emerald-600"
+              />
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Premium (requires Teacher Full or a pack code)
+              </span>
             </label>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -2054,6 +2074,214 @@ function JohnWebTab() {
         <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">
           Site URL: {JOHNWEB_URL} · Merchant: +260 {PAYMENT_MERCHANT_NUMBER.slice(1, 3)} {PAYMENT_MERCHANT_NUMBER.slice(3, 6)} {PAYMENT_MERCHANT_NUMBER.slice(6)}
         </p>
+      </div>
+    </div>
+  );
+}
+
+const CODE_TYPE_INFO: Record<RedeemCodeType, string> = {
+  gift: "One code grants Teacher Full — sell scratch cards or WhatsApp codes.",
+  promo: "Public code with many uses and an optional expiry — e.g. FREEDAY2026.",
+  discount: "Gives users a % off Teacher Full when they pay by mobile money.",
+  pack: "Unlocks specific premium quizzes for the redeemer.",
+};
+
+function RedeemCodesTab() {
+  const { user } = useAuth();
+  const { quizzes } = useQuizzes();
+  const [codes, setCodes] = useState<Record<string, RedeemCode> | null>(null);
+  const [type, setType] = useState<RedeemCodeType>("gift");
+  const planId: BuyablePlanId = "teacher_full";
+  const [quantity, setQuantity] = useState(1);
+  const [amount, setAmount] = useState(1);
+  const [discountPercent, setDiscountPercent] = useState(10);
+  const [customCode, setCustomCode] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [selectedQuizzes, setSelectedQuizzes] = useState<Set<string>>(new Set());
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { askConfirm, dialog: confirmDialog } = useConfirmDialog();
+
+  useEffect(() => {
+    const unsubscribe = onValue(ref(db, "codes"), (snapshot) => {
+      setCodes(snapshot.val() ?? {});
+    });
+    return unsubscribe;
+  }, []);
+
+  const generate = async (e: FormEvent) => {
+    e.preventDefault();
+    setMessage(null);
+    if (type === "pack" && selectedQuizzes.size === 0) {
+      setMessage("Select at least one quiz for a pack code.");
+      return;
+    }
+    if (type === "discount" && (discountPercent < 1 || discountPercent > 90)) {
+      setMessage("Discount must be between 1 and 90 percent.");
+      return;
+    }
+    setBusy(true);
+    const toCreate: RedeemCode[] = [];
+    const expiresAt = expiryDate ? new Date(`${expiryDate}T23:59:59`).getTime() : undefined;
+    const base: Omit<RedeemCode, "code" | "createdAt"> = {
+      type,
+      planId: type === "pack" || type === "discount" ? undefined : planId,
+      amount: type === "gift" ? 1 : Math.max(1, Number(amount)),
+      usedCount: 0,
+      ...(type === "discount" ? { discountPercent: Number(discountPercent) } : {}),
+      ...(type === "pack" ? { quizIds: Array.from(selectedQuizzes) } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+      createdBy: user?.uid ?? "admin",
+    };
+    try {
+      if (type === "gift") {
+        for (let i = 0; i < Math.max(1, Number(quantity)); i++) {
+          toCreate.push({ ...base, code: generateCode(), createdAt: Date.now() });
+        }
+      } else {
+        toCreate.push({ ...base, code: customCode.trim().toUpperCase() || generateCode(), createdAt: Date.now() });
+      }
+      for (const code of toCreate) {
+        await set(ref(db, `codes/${code.code}`), code);
+      }
+      const codesList = toCreate.map((c) => c.code).join(", ");
+      await navigator.clipboard.writeText(codesList);
+      setMessage(`Created ${toCreate.length} code(s): ${codesList} — copied to clipboard.`);
+      setCustomCode("");
+      setSelectedQuizzes(new Set());
+    } catch (err) {
+      setMessage(err instanceof Error ? `Failed: ${err.message}` : "Failed to create codes.");
+    }
+    setBusy(false);
+  };
+
+  const removeCode = async (code: string) => {
+    const confirmed = await askConfirm({
+      title: "Delete code?",
+      message: "Codes already redeemed keep their effect.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
+    await remove(ref(db, `codes/${code}`));
+  };
+
+  const entries = codes ? Object.values(codes).sort((a, b) => b.createdAt - a.createdAt) : [];
+
+  return (
+    <div className="space-y-6">
+      {confirmDialog}
+      <div className="card p-6">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Create redeem codes</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Users redeem codes on the Payments and Dashboard pages.
+        </p>
+        {message && (
+          <p role="status" className={`mt-3 rounded-lg px-3 py-2 text-sm ${message.startsWith("Failed") || message.startsWith("Select") || message.startsWith("Discount") ? "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"}`}>
+            {message}
+          </p>
+        )}
+        <form onSubmit={generate} className="mt-4 space-y-4">
+          <label className="block">
+            <span className="label">Code type</span>
+            <select className="input" value={type} onChange={(e) => setType(e.target.value as RedeemCodeType)}>
+              <option value="gift">Gift code — grants Teacher Full (1 use)</option>
+              <option value="promo">Promo code — Teacher Full, many uses</option>
+              <option value="discount">Discount code — % off Teacher Full</option>
+              <option value="pack">Quiz pack code — unlocks premium quizzes</option>
+            </select>
+            <p className="mt-1 text-xs text-slate-400">{CODE_TYPE_INFO[type]}</p>
+          </label>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            {type === "gift" ? (
+              <label className="block">
+                <span className="label">Quantity</span>
+                <input className="input" type="number" min={1} max={100} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+              </label>
+            ) : (
+              <>
+                <label className="block">
+                  <span className="label">Max uses</span>
+                  <input className="input" type="number" min={1} max={10000} value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className="label">Custom code (optional — leave blank to generate)</span>
+                  <input className="input uppercase" placeholder="e.g. FREEDAY2026" value={customCode} onChange={(e) => setCustomCode(e.target.value)} />
+                </label>
+              </>
+            )}
+            {type === "discount" && (
+              <label className="block">
+                <span className="label">Discount %</span>
+                <input className="input" type="number" min={1} max={90} value={discountPercent} onChange={(e) => setDiscountPercent(Number(e.target.value))} />
+              </label>
+            )}
+            <label className="block">
+              <span className="label">Expiry date (optional)</span>
+              <input className="input" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+            </label>
+          </div>
+
+          {type === "pack" && (
+            <div className="rounded-lg bg-slate-50 p-4 dark:bg-slate-800/50">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Quizzes to unlock</p>
+              <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                {quizzes.filter((q) => q.premium).map((q) => (
+                  <label key={q.id} className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={selectedQuizzes.has(q.id)}
+                      onChange={(e) =>
+                        setSelectedQuizzes((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(q.id);
+                          else next.delete(q.id);
+                          return next;
+                        })
+                      }
+                      className="h-4 w-4 accent-emerald-600"
+                    />
+                    {q.title}
+                  </label>
+                ))}
+              </div>
+              {quizzes.filter((q) => q.premium).length === 0 && (
+                <p className="mt-2 text-xs text-slate-400">
+                  No premium quizzes yet — tick "Premium" when adding or editing a quiz.
+                </p>
+              )}
+            </div>
+          )}
+
+          <button type="submit" disabled={busy} className="btn-primary disabled:opacity-60">
+            {busy ? "Creating…" : "Generate codes"}
+          </button>
+        </form>
+      </div>
+
+      <div className="card p-6">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Active codes ({entries.length})</h2>
+        {entries.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">No codes yet.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {entries.map((c) => (
+              <li key={c.code} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-4 py-2.5 text-sm dark:bg-slate-800/50">
+                <div>
+                  <p className="font-mono font-bold text-slate-800 dark:text-slate-200">{c.code}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {c.type === "gift" ? "Gift" : c.type === "promo" ? "Promo" : c.type === "discount" ? `Discount ${c.discountPercent}%` : `Pack (${c.quizIds?.length ?? 0} quizzes)`} · used {c.usedCount}/{c.amount}
+                    {c.expiresAt ? ` · expires ${new Date(c.expiresAt).toLocaleDateString()}` : ""}
+                  </p>
+                </div>
+                <button onClick={() => removeCode(c.code)} className="text-xs font-semibold text-red-500 hover:underline">
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

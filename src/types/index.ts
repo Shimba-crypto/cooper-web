@@ -29,6 +29,7 @@ export interface Quiz {
   year: number;
   durationMinutes: number;
   questions: Question[];
+  premium?: boolean;
 }
 
 export type UserRole = "user" | "admin";
@@ -48,6 +49,8 @@ export interface AppUser {
   createdAt: number;
   plan?: UserPlan;
   avatarUrl?: string;
+  unlockedQuizIds?: string[];
+  discount?: { percent: number; code: string; redeemedAt: number };
 }
 
 export interface Profile {
@@ -207,4 +210,28 @@ export interface ReferralCode {
   uid: string;
   code: string;
   createdAt: number;
+}
+
+export type RedeemCodeType = "gift" | "promo" | "discount" | "pack";
+
+export interface RedeemCode {
+  code: string;
+  type: RedeemCodeType;
+  planId?: Exclude<PlanId, "free" | "admin">;
+  amount: number;
+  usedCount: number;
+  discountPercent?: number;
+  quizIds?: string[];
+  expiresAt?: number;
+  createdBy: string;
+  createdAt: number;
+}
+
+export interface RedeemRecord {
+  code: string;
+  type: RedeemCodeType;
+  planId?: Exclude<PlanId, "free" | "admin">;
+  discountPercent?: number;
+  quizIds?: string[];
+  redeemedAt: number;
 }

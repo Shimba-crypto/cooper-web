@@ -35,6 +35,20 @@
         ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (newData.hasChildren(['planId']) && newData.child('claimedBy').val() === auth.uid))"
       }
     },
+    "codes": {
+      ".read": "auth != null",
+      "$code": {
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (newData.hasChildren(['code', 'type', 'createdBy']) && newData.child('usedCount').val() === data.child('usedCount').val() + 1))"
+      }
+    },
+    "redeemed": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        "$code": {
+          ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (auth.uid === $uid && !data.exists()))"
+        }
+      }
+    },
     "announcements": {
       ".read": true,
       "$id": {
