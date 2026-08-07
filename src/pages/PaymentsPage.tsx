@@ -27,6 +27,9 @@ export default function PaymentsPage() {
   const [airtelEnabled, setAirtelEnabled] = useState(false);
   const [airtelBusy, setAirtelBusy] = useState(false);
   const [airtelMsg, setAirtelMsg] = useState<string | null>(null);
+  const [dpoEnabled, setDpoEnabled] = useState(false);
+  const [dpoBusy, setDpoBusy] = useState(false);
+  const [dpoMsg, setDpoMsg] = useState<string | null>(null);
 
   const buyablePlans = Object.values(PLANS);
   const discount = appUser?.discount;
@@ -40,7 +43,36 @@ export default function PaymentsPage() {
       .then((r) => r.json())
       .then((cfg) => setAirtelEnabled(Boolean(cfg?.enabled)))
       .catch(() => setAirtelEnabled(false));
+    fetch(`${API_URL}/api/dpo/config`)
+      .then((r) => r.json())
+      .then((cfg) => setDpoEnabled(Boolean(cfg?.enabled)))
+      .catch(() => setDpoEnabled(false));
   }, []);
+
+  useEffect(() => {
+    const dpoPayment = searchParams.get("dpo");
+    if (!dpoPayment || !user) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/payments/dpo-verify?paymentId=${encodeURIComponent(dpoPayment)}`);
+        const data = await res.json();
+        if (!cancelled && data?.status === "confirmed") {
+          setDpoMsg("Payment confirmed! Your Teacher Full plan is now active.");
+        } else if (!cancelled && data?.status === "requested") {
+          setDpoMsg("Payment still processing — we'll activate your plan the moment DPO confirms it.");
+        }
+      } catch {
+        /* ignore polling errors */
+      }
+    };
+    check();
+    const interval = setInterval(check, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [searchParams, user]);
 
   useEffect(() => {
     const planParam = searchParams.get("plan");
@@ -95,6 +127,28 @@ export default function PaymentsPage() {
     if (discount) await set(ref(db, `users/${user.uid}/discount`), null);
     setSubmitted(record);
     setBusy(false);
+  };
+
+  const payWithDpo = async () => {
+    setDpoBusy(true);
+    setDpoMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/api/payments/request-dpo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: user.uid, planId: plan, phone: phone.trim(), name: name.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
+      window.open(data.payUrl, "_blank", "noopener");
+      setDpoMsg(
+        "DPO checkout opened in a new tab — pay there with mobile money or card. Your plan activates automatically once DPO confirms the payment.",
+      );
+    } catch (err) {
+      setDpoMsg(`DPO failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDpoBusy(false);
+    }
   };
 
   const entries = myPayments ? Object.values(myPayments).sort((a, b) => b.createdAt - a.createdAt) : [];
@@ -274,6 +328,24 @@ export default function PaymentsPage() {
                 {airtelBusy ? "Sending request…" : `Pay now with Airtel Money (K${effectivePrice})`}
               </button>
               {airtelMsg && <p className={`mt-2 text-xs ${airtelMsg.startsWith("Airtel Money failed") ? "text-red-600 dark:text-red-400" : "text-emerald-800 dark:text-emerald-300"}`}>{airtelMsg}</p>}
+            </div>
+          )}
+          {dpoEnabled && (
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900 dark:bg-indigo-950/40">
+              <p className="text-sm font-bold text-indigo-800 dark:text-indigo-300">Pay with DPO (mobile money or card)</p>
+              <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-400">
+                One checkout for MTN MoMo, Airtel Money, Zamtel Kwacha and Visa/Mastercard.
+                We open DPO's hosted payment page — your plan activates automatically when it's paid.
+              </p>
+              <button
+                type="button"
+                disabled={dpoBusy}
+                onClick={payWithDpo}
+                className="btn-primary mt-3 w-full disabled:opacity-60"
+              >
+                {dpoBusy ? "Starting checkout…" : `Pay K${effectivePrice} with DPO`}
+              </button>
+              {dpoMsg && <p className={`mt-2 text-xs ${dpoMsg.startsWith("DPO failed") ? "text-red-600 dark:text-red-400" : "text-indigo-800 dark:text-indigo-300"}`}>{dpoMsg}</p>}
             </div>
           )}
           <p className="text-xs text-slate-400">

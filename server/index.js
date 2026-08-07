@@ -13,6 +13,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import cors from "cors";
+import { XMLParser, XMLBuilder } from "fast-xml-parser";
 import { initializeApp, cert } from "firebase-admin/app";
 import { getDatabase } from "firebase-admin/database";
 import { getMessaging } from "firebase-admin/messaging";
@@ -191,6 +192,87 @@ async function airtelRequestToPay({ amount, reference, txId, payerPhone }) {
   if (!res.ok) throw new Error(`Airtel requesttopay failed: ${res.status}`);
   return res.json();
 }
+
+// ---------- DPO Group (Pay by Network — cards + MTN + Airtel + Zamtel) ----------
+const DPO = {
+  baseUrl: process.env.DPO_BASE_URL ?? "https://secure.3gdirectpay.com/API/v6/",
+  payUrl: process.env.DPO_PAY_URL ?? "https://secure.3gdirectpay.com/pay.asp",
+  companyToken: process.env.DPO_COMPANY_TOKEN ?? "",
+  serviceType: process.env.DPO_SERVICE_TYPE ?? "",
+  redirectUrl: process.env.DPO_REDIRECT_URL ?? "https://chikondi-dot.web.app",
+  currency: process.env.DPO_CURRENCY ?? "ZMW",
+};
+const DPO_ENABLED = !!(DPO.companyToken && DPO.serviceType);
+
+const dpoXml = new XMLParser({ ignoreAttributes: false });
+
+async function dpoRequest(operation, fields) {
+  const xml = new XMLBuilder({ ignoreAttributes: false }).build({
+    API3G: {
+      CompanyToken: DPO.companyToken,
+      Request: operation,
+      ...fields,
+    },
+  });
+  const res = await fetch(DPO.baseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/xml; charset=utf-8", Accept: "application/xml" },
+    body: xml,
+  });
+  if (!res.ok) throw new Error(`DPO ${operation} failed: ${res.status}`);
+  return dpoXml.parse(await res.text()).API3G ?? {};
+}
+
+async function dpoCreateToken({ paymentId, amount, email, phone }) {
+  const res = await dpoRequest("createToken", {
+    Transaction: {
+      PaymentAmount: String(amount),
+      PaymentCurrency: DPO.currency,
+      CompanyRef: paymentId,
+      CompanyRefUnique: "1",
+      PTL: "60",
+      RedirectURL: `${DPO.redirectUrl}/payments?dpo=${paymentId}`,
+      BackURL: `${DPO.redirectUrl}/payments?dpo=${paymentId}`,
+      customerFirstName: email.split("@")[0] ?? "Customer",
+      customerLastName: "",
+      customerEmail: email,
+      ...(phone ? { customerPhone: phone } : {}),
+    },
+    Services: {
+      Service: {
+        ServiceType: DPO.serviceType,
+        ServiceDescription: "CooperWeb Teacher Full plan",
+        ServiceDate: "2026/01/20 19:00",
+      },
+    },
+  });
+  if (res.Result !== "000" || !res.TransToken) {
+    throw new Error(`DPO createToken: ${res.Result} ${res.ResultExplanation ?? ""}`.trim());
+  }
+  return res.TransToken;
+}
+
+async function dpoVerifyToken(transToken) {
+  const res = await dpoRequest("verifyToken", { TransactionToken: transToken });
+  return res;
+}
+
+const confirmPaidPlan = async ({ uid, paymentId, planId, txId, via }) => {
+  const paymentSnap = await db.ref(`payments/${uid}/${paymentId}`).once("value");
+  if (!paymentSnap.exists() || paymentSnap.val().status === "confirmed") return;
+  await db.ref().update({
+    [`payments/${uid}/${paymentId}/status`]: "confirmed",
+    [`payments/${uid}/${paymentId}/confirmedAt`]: Date.now(),
+    [`payments/${uid}/${paymentId}/momoTransactionId`]: txId,
+    [`users/${uid}/plan`]: { id: planId, activatedAt: Date.now(), claimedVia: via },
+  });
+  await notifyUser(uid, {
+    type: "payment",
+    title: "Payment confirmed",
+    message: `Your Teacher Full plan is now active. Welcome aboard!`,
+    link: "/dashboard",
+  });
+};
 
 const notifyAllUsers = async (payload) => {
   const snap = await db.ref("users").once("value");
@@ -511,6 +593,128 @@ app.post("/api/airtel/callback", async (req, res) => {
     });
   } catch (err) {
     console.error("airtel callback error:", err.message);
+  }
+});
+
+// GET /api/dpo/config — whether DPO gateway is wired up (public)
+app.get("/api/dpo/config", (_req, res) => {
+  res.json({
+    enabled: DPO_ENABLED,
+    currency: DPO.currency,
+    plans: PLAN_PRICES,
+  });
+});
+
+// POST /api/payments/request-dpo  body: { uid, planId, phone?, name? }
+// Creates a "requested" payment, asks DPO for a checkout token, returns the
+// hosted payment URL. DPO's pushPayments webhook auto-confirms the plan.
+app.post("/api/payments/request-dpo", async (req, res) => {
+  if (!DPO_ENABLED) return res.status(503).json({ error: "DPO is not configured yet" });
+  const { uid, planId, phone, name } = req.body ?? {};
+  const price = PLAN_PRICES[planId];
+  if (!uid || !price) return res.status(400).json({ error: "Need uid and planId" });
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    if (!userSnap.exists()) return res.status(404).json({ error: "User not found" });
+    const email = userSnap.val().email ?? "";
+    const paymentId = `pay-${Date.now()}`;
+    const payment = {
+      id: paymentId,
+      uid,
+      email,
+      planId,
+      amount: price,
+      method: "dpo",
+      phone: phone ?? "",
+      status: "requested",
+      createdAt: Date.now(),
+    };
+    await db.ref(`payments/${uid}/${paymentId}`).set(payment);
+    const transToken = await dpoCreateToken({
+      paymentId,
+      amount: price,
+      email,
+      phone: cleanMsisdn(phone ?? ""),
+    });
+    await db.ref(`momo/dpoTxs/${transToken}`).set({
+      uid,
+      paymentId,
+      planId,
+      status: "PENDING",
+      createdAt: Date.now(),
+    });
+    await db.ref(`momo/dpoByPayment/${paymentId}`).set(transToken);
+    res.json({ ok: true, paymentId, transToken, payUrl: `${DPO.payUrl}?ID=${transToken}` });
+  } catch (err) {
+    console.error("request-dpo error:", err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// GET /api/payments/dpo-verify?paymentId=... — poll status after checkout return
+app.get("/api/payments/dpo-verify", async (req, res) => {
+  const { paymentId } = req.query;
+  if (!paymentId) return res.status(400).json({ error: "Need paymentId" });
+  try {
+    const tokenSnap = await db.ref(`momo/dpoByPayment/${paymentId}`).once("value");
+    const transToken = tokenSnap.val();
+    const paymentsSnap = await db.ref("payments").once("value");
+    let payment = null;
+    paymentsSnap.forEach((uidChild) => {
+      const byUser = uidChild.val() ?? {};
+      if (byUser[paymentId]) {
+        payment = byUser[paymentId];
+        return true;
+      }
+      return false;
+    });
+    if (!payment) return res.status(404).json({ error: "Payment not found" });
+    if (payment.status !== "confirmed" && transToken) {
+      try {
+        const verified = await dpoVerifyToken(transToken);
+        if (verified.Result === "000") {
+          await confirmPaidPlan({
+            uid: payment.uid,
+            paymentId,
+            planId: payment.planId,
+            txId: transToken,
+            via: "dpo",
+          });
+          payment = { ...payment, status: "confirmed" };
+        }
+      } catch (err) {
+        console.error("dpo verify error:", err.message);
+      }
+    }
+    res.json({ ok: true, status: payment.status, planId: payment.planId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/dpo/callback — DPO pushPayments webhook (XML, no x-api-key!)
+app.post("/api/dpo/callback", express.text({ type: () => true }), async (req, res) => {
+  const okXml = `<?xml version="1.0" encoding="utf-8"?>\n<API3G><Response>OK</Response></API3G>`;
+  try {
+    const parsed = dpoXml.parse(req.body ?? "").API3G ?? {};
+    const transToken = parsed.TransactionToken;
+    const paymentRef = parsed.TransactionRef ?? parsed.CompanyRef;
+    if (!transToken || !paymentRef) return res.type("application/xml").send(okXml);
+    res.type("application/xml").send(okXml);
+    try {
+      const verified = await dpoVerifyToken(transToken);
+      if (verified.Result !== "000") return;
+      const txSnap = await db.ref(`momo/dpoTxs/${transToken}`).once("value");
+      const tx = txSnap.val();
+      if (!tx) return;
+      await db.ref(`momo/dpoTxs/${transToken}/status`).set("SUCCESSFUL");
+      await confirmPaidPlan({ uid: tx.uid, paymentId: tx.paymentId, planId: tx.planId, txId: transToken, via: "dpo" });
+    } catch (err) {
+      console.error("dpo callback processing error:", err.message);
+    }
+  } catch (err) {
+    console.error("dpo callback parse error:", err.message);
+    res.status(200).type("application/xml").send(okXml);
   }
 });
 

@@ -203,6 +203,32 @@ To turn it on:
 Server endpoints: `GET /api/airtel/config`,
 `POST /api/payments/request-airtel`, `POST /api/airtel/callback`.
 
+## DPO gateway (cards + MTN + Airtel + Zamtel in one checkout)
+
+DPO's hosted page accepts MTN MoMo, Airtel Money, Zamtel Kwacha and cards.
+Your server creates a payment token, the customer pays on DPO's page, and the
+`pushPayments` webhook (or a status poll on return) auto-activates the plan.
+
+To turn it on:
+
+1. Apply at https://dpogroup.com/get-started-2/ (business docs + bank
+   account; onboarding roughly 3–14 days). You'll receive your **Company
+   Token** and a **Service Type** ID.
+2. Add env vars to the Render service and redeploy:
+   - `DPO_COMPANY_TOKEN`
+   - `DPO_SERVICE_TYPE`
+   - `DPO_BASE_URL` (default `https://secure.3gdirectpay.com/API/v6/`)
+   - `DPO_PAY_URL` (default `https://secure.3gdirectpay.com/pay.asp`)
+   - `DPO_REDIRECT_URL` (default `https://chikondi-dot.web.app` — where
+     customers land after paying)
+   - `DPO_CURRENCY` (default `ZMW`)
+3. Set your merchant account's notify/callback URL in the DPO merchant portal
+   to `https://<your-render-host>/api/dpo/callback`.
+
+Server endpoints: `GET /api/dpo/config`,
+`POST /api/payments/request-dpo`, `GET /api/payments/dpo-verify?paymentId=…`,
+`POST /api/dpo/callback` (DPO webhook — XML, no `x-api-key`).
+
 Referral paywall: users who signed up via a referral link
 (`/signup?ref=CODE`) see a **Time to pay up** banner on the dashboard until
 they have the Teacher Full plan.
@@ -255,6 +281,9 @@ src/
 | `referrals/<referrer>/<child>` | self | referrer |
 | `momo/requests/<referenceId>` | admin only | admin only |
 | `momo/byExternal/<paymentId>` | admin only | admin only |
+| `momo/airtelTxs/<txId>` | admin only | admin only |
+| `momo/dpoTxs/<transToken>` | admin only | admin only |
+| `momo/dpoByPayment/<paymentId>` | admin only | admin only |
 | `pushTokens/<uid>` | admin | self |
 | `analytics/pages/<path>/views` | admin | anyone (increment) |
 
