@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { BadgeCheck, Ticket } from "lucide-react";
-import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
-import { redeemCode } from "../utils/redeem";
+import { API_URL } from "../config";
 
 export default function RedeemCard() {
   const { user } = useAuth();
@@ -15,9 +14,22 @@ export default function RedeemCard() {
     if (!user || !code.trim()) return;
     setBusy(true);
     setResult(null);
-    const outcome = await redeemCode(db, user.uid, code);
-    setResult(outcome);
-    setBusy(false);
+    try {
+      const res = await fetch(`${API_URL}/api/redeem`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: user.uid, code }),
+      });
+      const data = await res.json();
+      setResult({ ok: res.ok, message: data?.message ?? data?.error ?? `Failed (${res.status})` });
+    } catch (err) {
+      setResult({
+        ok: false,
+        message: err instanceof Error ? `Redeem failed: ${err.message}` : "Redeem failed — try again.",
+      });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

@@ -15,7 +15,7 @@ import express from "express";
 import cors from "cors";
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
 import { initializeApp, cert } from "firebase-admin/app";
-import { getDatabase } from "firebase-admin/database";
+import { getDatabase, ServerValue } from "firebase-admin/database";
 import { getMessaging } from "firebase-admin/messaging";
 
 const DATABASE_URL = process.env.VITE_FIREBASE_DATABASE_URL ?? "https://chikondi-dot-default-rtdb.firebaseio.com";
@@ -406,6 +406,79 @@ app.get("/api/payments/history", async (req, res) => {
   try {
     const snap = await db.ref(`payments/${uid}`).once("value");
     res.json(snap.val() ?? {});
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/redeem  body: { uid, code }
+// Public: redeems a gift/promo/discount/pack code server-side (no client DB auth needed).
+app.post("/api/redeem", async (req, res) => {
+  const { uid, code: rawCode } = req.body ?? {};
+  if (!uid || !rawCode) return res.status(400).json({ error: "Need uid and code" });
+  const code = String(rawCode).trim().toUpperCase();
+  if (!code) return res.status(400).json({ error: "Enter a code first." });
+  try {
+    const codeSnap = await db.ref(`codes/${code}`).once("value");
+    const data = codeSnap.val();
+    if (!data) return res.status(404).json({ error: "Invalid code — double-check the spelling." });
+    if (data.expiresAt && data.expiresAt < Date.now())
+      return res.status(400).json({ error: "This code has expired." });
+    if ((data.usedCount ?? 0) >= data.amount)
+      return res.status(400).json({ error: "This code has already been fully used." });
+
+    const already = await db.ref(`redeemed/${uid}/${code}`).once("value");
+    if (already.exists()) return res.status(400).json({ error: "You've already redeemed this code." });
+
+    const record = {
+      code,
+      type: data.type,
+      ...(data.planId ? { planId: data.planId } : {}),
+      ...(data.discountPercent ? { discountPercent: data.discountPercent } : {}),
+      ...(data.quizIds ? { quizIds: data.quizIds } : {}),
+      redeemedAt: Date.now(),
+    };
+
+    const updates = {};
+    if (data.type === "gift" || data.type === "promo") {
+      updates[`users/${uid}/plan`] = {
+        id: data.planId ?? "teacher_full",
+        activatedAt: Date.now(),
+        claimedVia: `redeem:${code}`,
+      };
+    }
+    if (data.type === "discount") {
+      updates[`users/${uid}/discount`] = {
+        percent: data.discountPercent,
+        code,
+        redeemedAt: Date.now(),
+      };
+    }
+    if (data.type === "pack" && data.quizIds) {
+      const userSnap = await db.ref(`users/${uid}`).once("value");
+      const existing = userSnap.val()?.unlockedQuizIds ?? [];
+      updates[`users/${uid}/unlockedQuizIds`] = Array.from(new Set([...existing, ...data.quizIds]));
+    }
+
+    await db.ref(`redeemed/${uid}/${code}`).set(record);
+    await db.ref().update({
+      ...updates,
+      [`codes/${code}/usedCount`]: ServerValue.increment(1),
+    });
+
+    if (data.type === "gift" || data.type === "promo") {
+      return res.json({
+        ok: true,
+        message: `Plan activated! ${data.planId === "teacher_full" ? "Teacher Full" : "Premium"} is now yours.`,
+      });
+    }
+    if (data.type === "discount") {
+      return res.json({ ok: true, message: `${data.discountPercent}% discount applied to Teacher Full.` });
+    }
+    if (data.type === "pack" && data.quizIds) {
+      return res.json({ ok: true, message: `${data.quizIds.length} premium quiz(zes) unlocked.` });
+    }
+    return res.json({ ok: true, message: "Code redeemed!" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
