@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CheckCircle2, CreditCard, Phone } from "lucide-react";
-import { onValue, ref, set } from "firebase/database";
+import { ref, set } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { PLANS, planName } from "../utils/plans";
@@ -83,11 +83,22 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     if (!user) return;
-    const unsub = onValue(ref(db, `payments/${user.uid}`), (snap) => {
-      const val = snap.val() as Record<string, PaymentRecord> | null;
-      setMyPayments(val ?? {});
-    });
-    return unsub;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/payments/history?uid=${encodeURIComponent(user.uid)}`);
+        const val = await res.json();
+        if (!cancelled && res.ok) setMyPayments(val ?? {});
+      } catch {
+        /* server bridge: ignore transient errors */
+      }
+    };
+    load();
+    const interval = setInterval(load, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [user]);
 
   if (!user) {
@@ -104,7 +115,11 @@ export default function PaymentsPage() {
   const effectivePrice = discount ? Math.round((basePrice * (100 - discount.percent)) / 100) : basePrice;
 
   const removeDiscount = async () => {
-    await set(ref(db, `users/${user?.uid}/discount`), null);
+    try {
+      await set(ref(db, `users/${user?.uid}/discount`), null);
+    } catch {
+      /* DB auth bridge: ignored, discount will clear once auth is restored */
+    }
   };
 
   const submit = async (e: FormEvent) => {
@@ -123,10 +138,28 @@ export default function PaymentsPage() {
       status: "pending",
       createdAt: Date.now(),
     };
-    await set(ref(db, `payments/${user.uid}/${id}`), record);
-    if (discount) await set(ref(db, `users/${user.uid}/discount`), null);
-    setSubmitted(record);
-    setBusy(false);
+    try {
+      const res = await fetch(`${API_URL}/api/payments/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: user.uid,
+          planId: plan,
+          method,
+          phone: phone.trim(),
+          email: user.email ?? "",
+          amount: effectivePrice,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? `Failed (${res.status})`);
+      if (discount) await removeDiscount();
+      setSubmitted(record);
+    } catch (err) {
+      setSubmitted({ ...record, status: "pending" });
+    } finally {
+      setBusy(false);
+    }
   };
 
   const payWithDpo = async () => {

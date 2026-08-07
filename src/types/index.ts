@@ -200,6 +200,7 @@ export interface PaymentRecord {
   createdAt: number;
   confirmedAt?: number;
   momoTransactionId?: string;
+  displayName?: string;
 }
 
 export interface Referral {

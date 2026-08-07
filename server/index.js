@@ -354,7 +354,57 @@ app.get("/api/quizzes", async (_req, res) => {
 
 app.get("/api/payments", requireAdmin, async (_req, res) => {
   try {
-    const snap = await db.ref("payments").once("value");
+    const [paymentsSnap, usersSnap] = await Promise.all([
+      db.ref("payments").once("value"),
+      db.ref("users").once("value"),
+    ]);
+    const payments = paymentsSnap.val() ?? {};
+    const users = usersSnap.val() ?? {};
+    for (const uid of Object.keys(payments)) {
+      for (const pid of Object.keys(payments[uid])) {
+        const rec = payments[uid][pid];
+        rec.displayName = users[uid]?.displayName ?? "";
+      }
+    }
+    res.json(payments);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/payments/create  body: { uid, planId, method, phone, email?, amount? }
+// Public: student clicked "Pay now" — record is created server-side (no client DB auth needed).
+app.post("/api/payments/create", async (req, res) => {
+  const { uid, planId, method, phone, email, amount } = req.body ?? {};
+  if (!uid || !planId || !["mtn", "airtel"].includes(method) || !phone) {
+    return res.status(400).json({ error: "Need uid, planId, method (mtn|airtel) and phone" });
+  }
+  try {
+    const id = `pay-${Date.now()}`;
+    const record = {
+      id,
+      uid,
+      email: email ?? "",
+      planId,
+      amount: Number(amount) || PLAN_PRICES[planId] || 200,
+      method,
+      phone: String(phone),
+      status: "pending",
+      createdAt: Date.now(),
+    };
+    await db.ref(`payments/${uid}/${id}`).set(record);
+    res.json({ ok: true, id, record });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/payments/history?uid=... — one user's payment records (public)
+app.get("/api/payments/history", async (req, res) => {
+  const uid = String(req.query.uid ?? "");
+  if (!uid) return res.status(400).json({ error: "Need uid" });
+  try {
+    const snap = await db.ref(`payments/${uid}`).once("value");
     res.json(snap.val() ?? {});
   } catch (err) {
     res.status(500).json({ error: err.message });

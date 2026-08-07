@@ -776,21 +776,30 @@ function UsersTab() {
 
 function PaymentsTab() {
   const [payments, setPayments] = useState<Record<string, Record<string, PaymentRecord>> | null>(null);
-  const [users, setUsers] = useState<Record<string, AppUser> | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { showToast, toast } = useToast();
+  const apiKey = localStorage.getItem("cooperweb:admin-api-key") ?? "";
 
   useEffect(() => {
-    const unsubPayments = onValue(ref(db, "payments"), (snap) => setPayments(snap.val() ?? {}));
-    const unsubUsers = onValue(ref(db, "users"), (snap) => setUsers(snap.val() ?? {}));
-    return () => {
-      unsubPayments();
-      unsubUsers();
+    let cancelled = false;
+    const load = async () => {
+      if (!apiKey) return;
+      try {
+        const res = await fetch(`${API_URL}/api/payments`, { headers: { "x-api-key": apiKey } });
+        const data = await res.json();
+        if (!cancelled && res.ok) setPayments(data ?? {});
+      } catch {
+        /* server bridge: ignore transient errors */
+      }
     };
-  }, []);
-
-  const apiKey = localStorage.getItem("cooperweb:admin-api-key") ?? "";
+    load();
+    const interval = setInterval(load, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [apiKey]);
 
   const confirmPayment = async (p: PaymentRecord, status: "confirmed" | "rejected") => {
     if (!apiKey) {
@@ -848,7 +857,7 @@ function PaymentsTab() {
             >
               <div className="min-w-0">
                 <p className="font-medium text-slate-800 dark:text-slate-200">
-                  {(users?.[p.uid]?.displayName ?? p.email) || p.uid.slice(0, 8)} — {planName(p.planId)} — K{p.amount}
+                  {(p.displayName ?? p.email) || p.uid.slice(0, 8)} — {planName(p.planId)} — K{p.amount}
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {new Date(p.createdAt).toLocaleString()} · {p.method.toUpperCase()} · {p.phone}
