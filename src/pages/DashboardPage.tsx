@@ -1,0 +1,184 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { Bookmark, Eye, Star, TrendingUp } from "lucide-react";
+import { onValue, ref } from "firebase/database";
+import { db } from "../firebase";
+import { usePapers } from "../hooks/usePapers";
+import { useLocalStorage } from "../hooks/useLocalStorage";
+import { useAuth } from "../context/AuthContext";
+import { hasPlan, planName } from "../utils/plans";
+import PlanBadge from "../components/PlanBadge";
+import UpgradePrompt from "../components/UpgradePrompt";
+import Spinner from "../components/Spinner";
+import type { QuizResult } from "../types";
+
+export default function DashboardPage() {
+  const { papers, loading } = usePapers();
+  const { user, planId } = useAuth();
+  const [viewed] = useLocalStorage<string[]>("cooperweb:viewed", []);
+  const [bookmarks] = useLocalStorage<string[]>("cooperweb:bookmarks", []);
+  const [ratings] = useLocalStorage<Record<string, number>>("cooperweb:ratings", {});
+  const [myResults, setMyResults] = useState<Record<string, QuizResult> | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setMyResults(null);
+      return;
+    }
+    const unsubscribe = onValue(ref(db, `results/${user.uid}`), (snapshot) => {
+      setMyResults(snapshot.val() ?? {});
+    });
+    return unsubscribe;
+  }, [user]);
+
+  if (loading) return <Spinner label="Loading dashboard…" />;
+
+  const viewedPapers = viewed.map((id) => papers.find((p) => p.id === id)).filter(Boolean);
+  const ratingValues = Object.values(ratings);
+  const avgRatingGiven = ratingValues.length
+    ? ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length
+    : 0;
+
+  const bySubject = papers.reduce<Record<string, number>>((acc, p) => {
+    if (viewed.includes(p.id)) acc[p.subject] = (acc[p.subject] ?? 0) + 1;
+    return acc;
+  }, {});
+  const maxSubject = Math.max(1, ...Object.values(bySubject));
+
+  const stats = [
+    { label: "Papers viewed", value: viewed.length, icon: Eye },
+    { label: "Bookmarks", value: bookmarks.length, icon: Bookmark },
+    {
+      label: "Avg rating given",
+      value: ratingValues.length ? avgRatingGiven.toFixed(1) : "—",
+      icon: Star,
+    },
+    {
+      label: "Quizzes taken",
+      value: myResults ? Object.keys(myResults).length : 0,
+      icon: TrendingUp,
+    },
+  ];
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-10">
+      <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Your Dashboard</h1>
+      <p className="mt-1 text-slate-600 dark:text-slate-400">
+        Your study progress — stored on this device.
+      </p>
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="card p-5">
+            <stat.icon className="h-6 w-6 text-emerald-600" />
+            <p className="mt-3 text-3xl font-extrabold text-slate-900 dark:text-white">{stat.value}</p>
+            <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <section className="card mt-8 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Your plan</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              You're on the <strong className="text-slate-700 dark:text-slate-200">{planName(planId)}</strong> plan.
+            </p>
+          </div>
+          <PlanBadge planId={planId} />
+        </div>
+        {!hasPlan(planId, "student_plus") && (
+          <div className="mt-4">
+            <UpgradePrompt required="student_plus" />
+          </div>
+        )}
+      </section>
+
+      <div className="mt-10 grid gap-8 lg:grid-cols-2">
+        <section className="card p-6">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            Papers viewed by subject
+          </h2>
+          {Object.keys(bySubject).length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+              You haven't viewed any papers yet.{" "}
+              <Link to="/papers" className="font-semibold text-emerald-600 hover:underline">
+                Browse papers →
+              </Link>
+            </p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {Object.entries(bySubject)
+                .sort((a, b) => b[1] - a[1])
+                .map(([subject, count]) => (
+                  <div key={subject}>
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium text-slate-700 dark:text-slate-200">{subject}</span>
+                      <span className="text-slate-500 dark:text-slate-400">{count}</span>
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div
+                        className="h-full rounded-full bg-emerald-600"
+                        style={{ width: `${(count / maxSubject) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </section>
+
+        <section className="card p-6">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">Recently viewed</h2>
+          {viewedPapers.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+              Nothing here yet. Open a paper to start tracking your progress.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-2">
+              {viewedPapers
+                .slice(-8)
+                .reverse()
+                .map((paper) => (
+                  <li key={paper!.id}>
+                    <Link
+                      to={`/paper/${paper!.id}`}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-sm transition hover:bg-emerald-50 dark:bg-slate-800/50 dark:hover:bg-emerald-950"
+                    >
+                      <span className="min-w-0 truncate font-medium text-slate-700 dark:text-slate-200">
+                        {paper!.title}
+                      </span>
+                      <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{paper!.year}</span>
+                    </Link>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {myResults && Object.keys(myResults).length > 0 && (
+        <section className="card mt-8 p-6">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">My quiz results</h2>
+          <div className="mt-4 space-y-2">
+            {Object.entries(myResults)
+              .sort((a, b) => b[1].completedAt - a[1].completedAt)
+              .map(([quizId, result]) => (
+                <div
+                  key={quizId}
+                  className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-4 py-3 dark:bg-slate-800/50"
+                >
+                  <Link to={`/quiz/${quizId}`} className="min-w-0 truncate font-medium text-emerald-700 hover:underline dark:text-emerald-400">
+                    {quizId.replace(/-/g, " ")}
+                  </Link>
+                  <span className="shrink-0 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    {result.score}/{result.total} · {new Date(result.completedAt).toLocaleDateString()}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}

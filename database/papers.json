@@ -1,0 +1,374 @@
+{
+  "papers": {
+    "mathematics-2021": {
+      "title": "Mathematics — Grade 7 ECZ Examination 2021",
+      "subject": "Mathematics",
+      "year": 2021,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1Oy14U18hzIfh5HDrDxda7eCLJGocQVkz",
+      "description": "Grade 7 ECZ Mathematics past paper 2021 covering arithmetic, algebra and geometry.",
+      "baseRating": 4.4,
+      "baseRatingCount": 38
+    },
+    "mathematics-2020": {
+      "title": "Mathematics — Grade 7 ECZ Examination 2020",
+      "subject": "Mathematics",
+      "year": 2020,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1XPRuYAxpJCPJf9o4mP6M0eusxtfFn5n0",
+      "description": "Grade 7 ECZ Mathematics past paper 2020 with multiple choice and structured questions.",
+      "baseRating": 4.2,
+      "baseRatingCount": 31
+    },
+    "mathematics-2019": {
+      "title": "Mathematics — Grade 7 ECZ Examination 2019",
+      "subject": "Mathematics",
+      "year": 2019,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1Av93ilktFBfN4rePWlEKUb3EECbCfAL4",
+      "description": "Grade 7 ECZ Mathematics past paper 2019 covering number work and simple geometry.",
+      "baseRating": 4.0,
+      "baseRatingCount": 25
+    },
+    "mathematics-2017": {
+      "title": "Mathematics — Grade 7 ECZ Examination 2017",
+      "subject": "Mathematics",
+      "year": 2017,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1wfgonmb_o9tivffqt9KwnaRkYvyJhhru",
+      "description": "Grade 7 ECZ Mathematics past paper 2017 with fractions, percentages and measurement.",
+      "baseRating": 4.1,
+      "baseRatingCount": 22
+    },
+    "mathematics-2016": {
+      "title": "Mathematics — Grade 7 ECZ Examination 2016",
+      "subject": "Mathematics",
+      "year": 2016,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1QzBjgNTU2UBmwpgBSczWUaKrtNjOPCyM",
+      "description": "Grade 7 ECZ Mathematics past paper 2016 covering arithmetic, algebra and problem solving.",
+      "baseRating": 3.9,
+      "baseRatingCount": 18
+    },
+    "mathematics-2016-specimen": {
+      "title": "Mathematics Specimen — Grade 7 ECZ",
+      "subject": "Mathematics",
+      "year": 2016,
+      "paperType": "Specimen",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1uZW30fn1jMGeSHgt2463maM7S2PbJfje",
+      "description": "Grade 7 ECZ Mathematics specimen paper showing the official exam format.",
+      "baseRating": 4.3,
+      "baseRatingCount": 27
+    },
+    "mathematics-2015": {
+      "title": "Mathematics — Grade 7 ECZ Examination 2015",
+      "subject": "Mathematics",
+      "year": 2015,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1QMt2_gvvPUoYfOgNuXKTlVQpiiDdblgd",
+      "description": "Grade 7 ECZ Mathematics past paper 2015 covering number work and simple geometry.",
+      "baseRating": 3.8,
+      "baseRatingCount": 15
+    },
+    "mathematics-2014": {
+      "title": "Mathematics — Grade 7 ECZ Examination 2014",
+      "subject": "Mathematics",
+      "year": 2014,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=18Pwr7MAYpMToV_5GRLIU5Vd37He4qDLE",
+      "description": "Grade 7 ECZ Mathematics past paper 2014 covering arithmetic and algebra basics.",
+      "baseRating": 3.7,
+      "baseRatingCount": 12
+    },
+    "english-2021": {
+      "title": "English Language — Grade 7 ECZ Examination 2021",
+      "subject": "English",
+      "year": 2021,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1Ui7LWNf9WrnEV7I8HzsUWvBBfMxYglE_",
+      "description": "Grade 7 ECZ English Language past paper 2021 covering comprehension, vocabulary and language structure.",
+      "baseRating": 4.3,
+      "baseRatingCount": 35
+    },
+    "english-2019": {
+      "title": "English Language — Grade 7 ECZ Examination 2019",
+      "subject": "English",
+      "year": 2019,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1fs5Zo5BrTmv9rapfNP-BuUXniLbvyQ4L",
+      "description": "Grade 7 ECZ English Language past paper 2019 with grammar and reading comprehension.",
+      "baseRating": 4.1,
+      "baseRatingCount": 28
+    },
+    "english-2018": {
+      "title": "English Language — Grade 7 ECZ Examination 2018",
+      "subject": "English",
+      "year": 2018,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1D3o4vZzaUmWHX9y1g-Lipv-8ms1-OLkI",
+      "description": "Grade 7 ECZ English Language past paper 2018 with comprehension and language exercises.",
+      "baseRating": 4.0,
+      "baseRatingCount": 24
+    },
+    "english-2017": {
+      "title": "English Language — Grade 7 ECZ Examination 2017",
+      "subject": "English",
+      "year": 2017,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1yxVPQp-HKpbMvViZJiYri6VZ0FvpYln8",
+      "description": "Grade 7 ECZ English Language past paper 2017 covering sentence construction and vocabulary.",
+      "baseRating": 3.9,
+      "baseRatingCount": 19
+    },
+    "english-2016": {
+      "title": "English Language — Grade 7 ECZ Examination 2016",
+      "subject": "English",
+      "year": 2016,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1bPjK2Y9iuR2RqEgRSAbvgfk9MhPLgpBy",
+      "description": "Grade 7 ECZ English Language past paper 2016 with composition and comprehension tasks.",
+      "baseRating": 4.2,
+      "baseRatingCount": 21
+    },
+    "english-2016-specimen": {
+      "title": "English Language Specimen — Grade 7 ECZ",
+      "subject": "English",
+      "year": 2016,
+      "paperType": "Specimen",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1_S4TUr2qQneQKlRj9WwxeijgtpqyMB-2",
+      "description": "Grade 7 ECZ English Language specimen paper showing the official exam format.",
+      "baseRating": 4.4,
+      "baseRatingCount": 26
+    },
+    "english-2015": {
+      "title": "English Language — Grade 7 ECZ Examination 2015",
+      "subject": "English",
+      "year": 2015,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1AIp0Qe9BbBgeexXGtVZUGlje5KIfkMcT",
+      "description": "Grade 7 ECZ English Language past paper 2015 with grammar and writing exercises.",
+      "baseRating": 3.8,
+      "baseRatingCount": 14
+    },
+    "english-2014": {
+      "title": "English Language — Grade 7 ECZ Examination 2014",
+      "subject": "English",
+      "year": 2014,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1ZgZybKdAM3vUf6Qvf8U78B_Us8lNrsiV",
+      "description": "Grade 7 ECZ English Language past paper 2014 covering comprehension and language structure.",
+      "baseRating": 3.6,
+      "baseRatingCount": 11
+    },
+    "english-2010": {
+      "title": "English Language — Grade 7 ECZ Examination 2010",
+      "subject": "English",
+      "year": 2010,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1exkMFyVxnlmYRnJBx91nyfW3Z_w8-FG8",
+      "description": "Grade 7 ECZ English Language past paper 2010 with comprehension and language exercises.",
+      "baseRating": 3.5,
+      "baseRatingCount": 9
+    },
+    "science-2021": {
+      "title": "Science — Grade 7 ECZ Examination 2021",
+      "subject": "Science",
+      "year": 2021,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1O8HOSjZLm7R3aE14J-S-Yoc5XaK3Naoe",
+      "description": "Grade 7 ECZ Science past paper 2021 covering biology, chemistry and physics fundamentals.",
+      "baseRating": 4.2,
+      "baseRatingCount": 30
+    },
+    "science-2020": {
+      "title": "Science — Grade 7 ECZ Examination 2020",
+      "subject": "Science",
+      "year": 2020,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1Eau2DlEyHKlZ8OV5_LI_xUz5zgosGUpe",
+      "description": "Grade 7 ECZ Science past paper 2020 covering the human body, plants and simple machines.",
+      "baseRating": 4.1,
+      "baseRatingCount": 26
+    },
+    "science-2019": {
+      "title": "Science — Grade 7 ECZ Examination 2019",
+      "subject": "Science",
+      "year": 2019,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1F8lwoDVo4hcYUTwnN7C1FGfSgKFk3e7w",
+      "description": "Grade 7 ECZ Science past paper 2019 with multiple choice and short answer questions.",
+      "baseRating": 4.0,
+      "baseRatingCount": 23
+    },
+    "science-2018": {
+      "title": "Science — Grade 7 ECZ Examination 2018",
+      "subject": "Science",
+      "year": 2018,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=18PQRT6eDPws-xYPWXZoeZ8DA6Uj2QOHA",
+      "description": "Grade 7 ECZ Science past paper 2018 covering biology, chemistry and physics topics.",
+      "baseRating": 3.9,
+      "baseRatingCount": 18
+    },
+    "science-2017": {
+      "title": "Science — Grade 7 ECZ Examination 2017",
+      "subject": "Science",
+      "year": 2017,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1P1A2ThfvO9YDNz8VeREwkW2jFvr4Di4o",
+      "description": "Grade 7 ECZ Science past paper 2017 with structured and practical application questions.",
+      "baseRating": 3.8,
+      "baseRatingCount": 16
+    },
+    "science-2016": {
+      "title": "Science — Grade 7 ECZ Examination 2016",
+      "subject": "Science",
+      "year": 2016,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=19fogykm7gREAy4VDuQDk-JNcKcFKyLVR",
+      "description": "Grade 7 ECZ Science past paper 2016 covering life processes and physical science.",
+      "baseRating": 4.2,
+      "baseRatingCount": 20
+    },
+    "science-2016-specimen": {
+      "title": "Science Specimen — Grade 7 ECZ",
+      "subject": "Science",
+      "year": 2016,
+      "paperType": "Specimen",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1qbEuNAITE7tBh5GKga8catDI4Kbx5OuU",
+      "description": "Grade 7 ECZ Science specimen paper showing the official exam format.",
+      "baseRating": 4.3,
+      "baseRatingCount": 24
+    },
+    "science-2015": {
+      "title": "Science — Grade 7 ECZ Examination 2015",
+      "subject": "Science",
+      "year": 2015,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=16vMCDEoAC3FfeoUT5AVRLuEQjqC1Jy2a",
+      "description": "Grade 7 ECZ Science past paper 2015 covering the human body and simple machines.",
+      "baseRating": 3.7,
+      "baseRatingCount": 13
+    },
+    "science-2014": {
+      "title": "Science — Grade 7 ECZ Examination 2014",
+      "subject": "Science",
+      "year": 2014,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=195h3nc05TleN912M4uMDNfniOFYwlfP0",
+      "description": "Grade 7 ECZ Science past paper 2014 covering plants, animals and physical science.",
+      "baseRating": 3.6,
+      "baseRatingCount": 11
+    },
+    "science-2013": {
+      "title": "Science — Grade 7 ECZ Examination 2013",
+      "subject": "Science",
+      "year": 2013,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1Faob6i-UMUcdC_mOFZNWexNdYq6Py06d",
+      "description": "Grade 7 ECZ Science past paper 2013 covering basic biology and physical science topics.",
+      "baseRating": 3.5,
+      "baseRatingCount": 10
+    },
+    "social-studies-2021": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2021",
+      "subject": "Social Studies",
+      "year": 2021,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1LVMm_coSEEfplSxYz_Gn28kAaBk1osHq",
+      "description": "Grade 7 ECZ Social Studies past paper 2021 covering Zambian history, geography and culture.",
+      "baseRating": 4.1,
+      "baseRatingCount": 27
+    },
+    "social-studies-2020": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2020",
+      "subject": "Social Studies",
+      "year": 2020,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1r8zEtft0_y_XPIIv4YEZGsYuzwf3_Sg4",
+      "description": "Grade 7 ECZ Social Studies past paper 2020 with map work and civic topics.",
+      "baseRating": 4.0,
+      "baseRatingCount": 22
+    },
+    "social-studies-2019": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2019",
+      "subject": "Social Studies",
+      "year": 2019,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1zWe_Nzu4VWb1ulcvnXCZc6Irht-7TyNX",
+      "description": "Grade 7 ECZ Social Studies past paper 2019 covering weather, climate and map reading.",
+      "baseRating": 3.9,
+      "baseRatingCount": 17
+    },
+    "social-studies-2018": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2018",
+      "subject": "Social Studies",
+      "year": 2018,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1oGpFxca655o5CUUsL02HTxMSeYoIXlDu",
+      "description": "Grade 7 ECZ Social Studies past paper 2018 with essay-style questions on Zambian society.",
+      "baseRating": 3.8,
+      "baseRatingCount": 15
+    },
+    "social-studies-2017": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2017",
+      "subject": "Social Studies",
+      "year": 2017,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1yx_EYonMWgoxERcnkkvhXsX99hEJZmfl",
+      "description": "Grade 7 ECZ Social Studies past paper 2017 covering Zambian and African geography.",
+      "baseRating": 3.7,
+      "baseRatingCount": 14
+    },
+    "social-studies-2016": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2016",
+      "subject": "Social Studies",
+      "year": 2016,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1BzLk5l4iYu5LIlqsczqKYH689Eb7LUtA",
+      "description": "Grade 7 ECZ Social Studies past paper 2016 covering history, geography and civics.",
+      "baseRating": 4.1,
+      "baseRatingCount": 19
+    },
+    "social-studies-2015": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2015",
+      "subject": "Social Studies",
+      "year": 2015,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=12IWtWsqR-D9V5oiCJM5gMV38HbHeDHIz",
+      "description": "Grade 7 ECZ Social Studies past paper 2015 with map work and civic topics.",
+      "baseRating": 3.6,
+      "baseRatingCount": 12
+    },
+    "social-studies-2014": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2014",
+      "subject": "Social Studies",
+      "year": 2014,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1nRYbxZm6XOWSgw7lfGE3g-PElO1XoJMz",
+      "description": "Grade 7 ECZ Social Studies past paper 2014 covering Zambian history and geography.",
+      "baseRating": 3.5,
+      "baseRatingCount": 10
+    },
+    "social-studies-2013": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2013",
+      "subject": "Social Studies",
+      "year": 2013,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1s4Vf0UpUqRLuMDjiauujuowv4Zzn4dux",
+      "description": "Grade 7 ECZ Social Studies past paper 2013 covering weather, climate and map reading.",
+      "baseRating": 3.4,
+      "baseRatingCount": 8
+    },
+    "social-studies-2011": {
+      "title": "Social Studies — Grade 7 ECZ Examination 2011",
+      "subject": "Social Studies",
+      "year": 2011,
+      "paperType": "Paper 1",
+      "pdfUrl": "https://drive.google.com/uc?export=download&id=1FAcN50dsTyU0f-QuJd7Yxi0l1_7DmKCD",
+      "description": "Grade 7 ECZ Social Studies past paper 2011 covering Zambian history and civics.",
+      "baseRating": 3.3,
+      "baseRatingCount": 7
+    }
+  }
+}

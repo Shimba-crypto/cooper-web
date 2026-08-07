@@ -1,0 +1,167 @@
+{
+  "rules": {
+    "papers": {
+      ".read": true,
+      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+    },
+    "quizzes": {
+      ".read": true,
+      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+    },
+    "users": {
+      ".indexOn": "email",
+      ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'admin')"
+      }
+    },
+    "results": {
+      ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "leaderboard": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "claimCodes": {
+      ".read": "root.child('users/' + auth.uid + '/role').val() === 'admin'",
+      "$token": {
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (newData.hasChildren(['planId']) && newData.child('claimedBy').val() === auth.uid))"
+      }
+    },
+    "announcements": {
+      ".read": true,
+      "$id": {
+        ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+      }
+    },
+    "profiles": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "following": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "followers": {
+      ".read": true,
+      "$uid": {
+        "$follower": {
+          ".write": "auth != null && auth.uid === $follower"
+        }
+      }
+    },
+    "groups": {
+      ".read": "auth != null",
+      "$gid": {
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (data.exists() && data.child('createdBy').val() === auth.uid) || (data.child('createdBy').val() === null && newData.child('createdBy').val() === auth.uid))"
+      }
+    },
+    "groupMembers": {
+      ".read": "auth != null",
+      "$gid": {
+        "$uid": {
+          ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || auth.uid === $uid)"
+        }
+      }
+    },
+    "myGroups": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "groupChat": {
+      "$gid": {
+        ".read": "auth != null && (root.child('groupMembers/' + $gid + '/' + auth.uid).exists() || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        "messages": {
+          "$msgId": {
+            ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (root.child('groupMembers/' + $gid + '/' + auth.uid).exists() && (newData.child('senderUid').val() === auth.uid || !newData.exists())))"
+          }
+        }
+      }
+    },
+    "notes": {
+      ".read": true,
+      "$id": {
+        ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+      }
+    },
+    "reports": {
+      ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
+      "$id": {
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (newData.child('userId').val() === auth.uid && !data.exists()))"
+      }
+    },
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'admin')"
+      }
+    },
+    "userQuizzes": {
+      ".read": true,
+      "$id": {
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (data.child('createdBy').val() === auth.uid || (!data.exists() && newData.child('createdBy').val() === auth.uid)))"
+      }
+    },
+    "dailyQuestion": {
+      ".read": true,
+      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+    },
+    "parentLinks": {
+      "$parentUid": {
+        ".read": "auth != null && (auth.uid === $parentUid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $parentUid || root.child('users/' + auth.uid + '/role').val() === 'admin')"
+      }
+    },
+    "challenges": {
+      "$cid": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (!data.exists() && newData.child('createdBy').val() === auth.uid) || (data.exists() && (data.child('createdBy').val() === auth.uid || data.child('players/' + auth.uid + '/uid').exists() || newData.child('players/' + auth.uid + '/uid').val() === auth.uid)))"
+      }
+    },
+    "payments": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        "$pid": {
+          ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (newData.child('uid').val() === auth.uid && !data.exists()))"
+        }
+      }
+    },
+    "referrals": {
+      "$referrerUid": {
+        ".read": "auth != null && (auth.uid === $referrerUid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
+        "$childUid": {
+          ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (newData.child('childUid').val() === auth.uid && !data.exists()))"
+        }
+      }
+    },
+    "referralCodes": {
+      ".read": "auth != null",
+      "$code": {
+        ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || newData.child('uid').val() === auth.uid)"
+      }
+    },
+    "pushTokens": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'admin')"
+      }
+    },
+    "analytics": {
+      ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
+      ".write": "auth != null"
+    }
+  }
+}
