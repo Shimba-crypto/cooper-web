@@ -1,6 +1,7 @@
 import { Link, NavLink } from "react-router-dom";
 import {
   BookOpen,
+  Contact,
   Dices,
   ExternalLink,
   FileQuestion,
@@ -40,6 +41,7 @@ const linkItems = [
   { to: "/notes", label: "Study Notes", icon: FileText },
   { to: "/groups", label: "School Groups", icon: Users },
   { to: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { to: "/people", label: "People", icon: Contact },
   { to: "/progress", label: "My Progress", icon: LayoutDashboard },
   { to: "/generate", label: "Random Paper", icon: Dices },
   { to: "/challenge", label: "Challenges", icon: Swords },

@@ -352,6 +352,37 @@ app.get("/api/quizzes", async (_req, res) => {
   }
 });
 
+// GET /api/people — public member directory: uid, displayName, avatarUrl, role, planId, bio
+// (never exposes emails or other private fields; users node is admin-only in the DB rules)
+app.get("/api/people", async (_req, res) => {
+  try {
+    const [usersSnap, profilesSnap] = await Promise.all([
+      db.ref("users").once("value"),
+      db.ref("profiles").once("value"),
+    ]);
+    const users = usersSnap.val() ?? {};
+    const profiles = profilesSnap.val() ?? {};
+    const people = Object.entries(users)
+      .map(([uid, u]) => {
+        const p = profiles[uid] ?? {};
+        const displayName = u.displayName || u.email?.split("@")[0] || "";
+        return {
+          uid,
+          displayName,
+          avatarUrl: u.avatarUrl || p.avatarUrl || "",
+          role: u.role ?? "user",
+          planId: u.plan?.id ?? "free",
+          bio: p.bio ?? "",
+        };
+      })
+      .filter((p) => p.displayName)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    res.json({ count: people.length, people });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/payments", requireAdmin, async (_req, res) => {
   try {
     const [paymentsSnap, usersSnap] = await Promise.all([
