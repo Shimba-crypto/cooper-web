@@ -20,8 +20,16 @@ export default function ChallengePage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!cid || !user) return;
-    const unsub = onValue(ref(db, `challenges/${cid}`), (snap) => setChallenge(snap.val() ?? null));
+    if (!cid) {
+      setChallenge(null);
+      return;
+    }
+    if (!user) return;
+    const unsub = onValue(
+      ref(db, `challenges/${cid}`),
+      (snap) => setChallenge(snap.val() ?? null),
+      () => setChallenge(null)
+    );
     return unsub;
   }, [cid, user]);
 
