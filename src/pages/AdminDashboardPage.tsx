@@ -2251,9 +2251,9 @@ function RedeemCodesTab() {
     const expiresAt = expiryDate ? new Date(`${expiryDate}T23:59:59`).getTime() : undefined;
     const base: Omit<RedeemCode, "code" | "createdAt"> = {
       type,
-      planId: type === "pack" || type === "discount" ? undefined : planId,
       amount: type === "gift" ? 1 : Math.max(1, Number(amount)),
       usedCount: 0,
+      ...(type !== "discount" && type !== "pack" ? { planId } : {}),
       ...(type === "discount" ? { discountPercent: Number(discountPercent) } : {}),
       ...(type === "pack" ? { quizIds: Array.from(selectedQuizzes) } : {}),
       ...(expiresAt ? { expiresAt } : {}),
