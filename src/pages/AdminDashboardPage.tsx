@@ -2219,6 +2219,8 @@ const CODE_TYPE_INFO: Record<RedeemCodeType, string> = {
   promo: "Public code with many uses and an optional expiry — e.g. FREEDAY2026.",
   discount: "Gives users a % off Teacher Full when they pay by mobile money.",
   pack: "Unlocks specific premium quizzes for the redeemer.",
+  market: "Unlocks the CooperCoins Market for the redeemer — entry ticket to the shop.",
+  coins: "Adds CooperCoins to the redeemer's wallet — each use grants the CC value.",
 };
 
 function RedeemCodesTab() {
@@ -2230,6 +2232,7 @@ function RedeemCodesTab() {
   const [quantity, setQuantity] = useState(1);
   const [amount, setAmount] = useState(1);
   const [discountPercent, setDiscountPercent] = useState(10);
+  const [coinValue, setCoinValue] = useState(50);
   const [customCode, setCustomCode] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [selectedQuizzes, setSelectedQuizzes] = useState<Set<string>>(new Set());
@@ -2262,9 +2265,10 @@ function RedeemCodesTab() {
       type,
       amount: type === "gift" ? 1 : Math.max(1, Number(amount)),
       usedCount: 0,
-      ...(type !== "discount" && type !== "pack" ? { planId } : {}),
+      ...(type !== "discount" && type !== "pack" && type !== "market" && type !== "coins" ? { planId } : {}),
       ...(type === "discount" ? { discountPercent: Number(discountPercent) } : {}),
       ...(type === "pack" ? { quizIds: Array.from(selectedQuizzes) } : {}),
+      ...(type === "coins" ? { coinValue: Math.max(1, Number(coinValue)) } : {}),
       ...(expiresAt ? { expiresAt } : {}),
       createdBy: user?.uid ?? "admin",
     };
@@ -2324,6 +2328,8 @@ function RedeemCodesTab() {
               <option value="promo">Promo code — Teacher Full, many uses</option>
               <option value="discount">Discount code — % off Teacher Full</option>
               <option value="pack">Quiz pack code — unlocks premium quizzes</option>
+              <option value="market">Market code — unlocks the CooperCoins Market</option>
+              <option value="coins">Coins code — adds CooperCoins to the wallet</option>
             </select>
             <p className="mt-1 text-xs text-slate-400">{CODE_TYPE_INFO[type]}</p>
           </label>
@@ -2350,6 +2356,12 @@ function RedeemCodesTab() {
               <label className="block">
                 <span className="label">Discount %</span>
                 <input className="input" type="number" min={1} max={90} value={discountPercent} onChange={(e) => setDiscountPercent(Number(e.target.value))} />
+              </label>
+            )}
+            {type === "coins" && (
+              <label className="block">
+                <span className="label">CC per redemption</span>
+                <input className="input" type="number" min={1} max={100000} value={coinValue} onChange={(e) => setCoinValue(Number(e.target.value))} />
               </label>
             )}
             <label className="block">
@@ -2406,7 +2418,7 @@ function RedeemCodesTab() {
                 <div>
                   <p className="font-mono font-bold text-slate-800 dark:text-slate-200">{c.code}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {c.type === "gift" ? "Gift" : c.type === "promo" ? "Promo" : c.type === "discount" ? `Discount ${c.discountPercent}%` : `Pack (${c.quizIds?.length ?? 0} quizzes)`} · used {c.usedCount}/{c.amount}
+                    {c.type === "gift" ? "Gift" : c.type === "promo" ? "Promo" : c.type === "discount" ? `Discount ${c.discountPercent}%` : c.type === "market" ? "Market access" : c.type === "coins" ? `${c.coinValue ?? 0} CC each` : `Pack (${c.quizIds?.length ?? 0} quizzes)`} · used {c.usedCount}/{c.amount}
                     {c.expiresAt ? ` · expires ${new Date(c.expiresAt).toLocaleDateString()}` : ""}
                   </p>
                 </div>

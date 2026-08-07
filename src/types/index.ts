@@ -49,6 +49,12 @@ export interface AppUser {
   createdAt: number;
   plan?: UserPlan;
   avatarUrl?: string;
+  avatarFrame?: string;
+  coins?: number;
+  coinsEarned?: number;
+  marketAccess?: boolean;
+  card?: DigitalCard;
+  cardDesign?: string;
   unlockedQuizIds?: string[];
   referredBy?: { referrerUid: string; code: string; createdAt: number };
   discount?: { percent: number; code: string; redeemedAt: number };
@@ -215,7 +221,7 @@ export interface ReferralCode {
   createdAt: number;
 }
 
-export type RedeemCodeType = "gift" | "promo" | "discount" | "pack";
+export type RedeemCodeType = "gift" | "promo" | "discount" | "pack" | "market" | "coins";
 
 export interface RedeemCode {
   code: string;
@@ -224,6 +230,7 @@ export interface RedeemCode {
   amount: number;
   usedCount: number;
   discountPercent?: number;
+  coinValue?: number;
   quizIds?: string[];
   expiresAt?: number;
   createdBy: string;
@@ -237,4 +244,36 @@ export interface RedeemRecord {
   discountPercent?: number;
   quizIds?: string[];
   redeemedAt: number;
+}
+
+export type CardTier = "bronze" | "silver" | "gold";
+
+export interface DigitalCard {
+  number: string;
+  holderName: string;
+  issuedAt: number;
+  design?: string;
+}
+
+export type WalletItemKind = "frame" | "card_design" | "badge";
+
+export interface WalletItem {
+  itemId: string;
+  acquiredAt: number;
+}
+
+export interface MarketItem {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  icon: string;
+  kind: WalletItemKind;
+}
+
+export interface CoinsLedgerEntry {
+  amount: number;
+  type: "quiz" | "code" | "purchase";
+  at: number;
+  ref?: string;
 }

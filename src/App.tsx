@@ -32,6 +32,8 @@ import ProgressReportPage from "./pages/ProgressReportPage";
 import PaymentsPage from "./pages/PaymentsPage";
 import JohnWebPage from "./pages/JohnWebPage";
 import PeoplePage from "./pages/PeoplePage";
+import MarketPage from "./pages/MarketPage";
+import CardPage from "./pages/CardPage";
 import { useTheme } from "./hooks/useTheme";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { usePageAnalytics } from "./hooks/usePageAnalytics";
@@ -91,6 +93,8 @@ export default function App() {
               <Route path="/payments" element={<PaymentsPage />} />
               <Route path="/john-web" element={<JohnWebPage />} />
               <Route path="/people" element={<PeoplePage />} />
+              <Route path="/market" element={<MarketPage />} />
+              <Route path="/card" element={<CardPage />} />
               <Route path="*" element={<HomePage />} />
             </Routes>
           </main>

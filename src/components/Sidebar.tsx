@@ -2,6 +2,7 @@ import { Link, NavLink } from "react-router-dom";
 import {
   BookOpen,
   Contact,
+  CreditCard,
   Dices,
   ExternalLink,
   FileQuestion,
@@ -15,6 +16,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  Store,
   Swords,
   Trophy,
   User,
@@ -47,6 +49,8 @@ const linkItems = [
   { to: "/challenge", label: "Challenges", icon: Swords },
   { to: "/progress-report", label: "Progress Report", icon: FileText },
   { to: "/referrals", label: "Refer & Earn", icon: Gift },
+  { to: "/market", label: "Market", icon: Store },
+  { to: "/card", label: "My Card", icon: CreditCard },
   { to: "/payments", label: "Payments", icon: Wallet },
   { to: "/john-web", label: "John Web", icon: ExternalLink },
   { to: "/create-quiz", label: "Create Quiz", icon: Plus },
@@ -112,7 +116,12 @@ export default function Sidebar({
             title={min ? "My profile" : undefined}
             className={min ? "shrink-0" : "flex shrink-0 items-center gap-2 rounded-lg transition hover:opacity-80"}
           >
-            <Avatar src={appUser?.avatarUrl} name={appUser?.displayName ?? user.email ?? "U"} size={36} />
+            <Avatar
+              src={appUser?.avatarUrl}
+              name={appUser?.displayName ?? user.email ?? "U"}
+              size={36}
+              frame={appUser?.avatarFrame}
+            />
           </Link>
           {!min && (
             <Link

@@ -74,6 +74,34 @@ const MOMO = {
 const MOMO_ENABLED = !!(MOMO.subscriptionKey && MOMO.userId && MOMO.userKey);
 const PLAN_PRICES = { teacher_full: 200 };
 
+const COINS_PER_CORRECT = 1;
+
+const MARKET_ITEMS = {
+  "frame-emerald": { name: "Emerald Avatar Ring", price: 30, kind: "frame" },
+  "frame-sunset": { name: "Sunset Avatar Ring", price: 60, kind: "frame" },
+  "frame-gold": { name: "Gold Avatar Ring", price: 120, kind: "frame" },
+  "design-ocean": { name: "Ocean Card Design", price: 60, kind: "card_design" },
+  "design-sunset": { name: "Sunset Card Design", price: 80, kind: "card_design" },
+  "design-midnight": { name: "Midnight Card Design", price: 150, kind: "card_design" },
+  "badge-quizmaster": { name: "Quiz Master Badge", price: 200, kind: "badge" },
+  "badge-perfect": { name: "Perfect 10 Badge", price: 250, kind: "badge" },
+};
+
+const CARD_NUMBER_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function randomCardNumber() {
+  let out = "CW-";
+  for (let i = 0; i < 3; i++) {
+    let group = "";
+    for (let j = 0; j < 4; j++) {
+      group += CARD_NUMBER_CHARS[Math.floor(Math.random() * CARD_NUMBER_CHARS.length)];
+    }
+    out += group;
+    if (i < 2) out += "-";
+  }
+  return out;
+}
+
 let momoTokenCache = { token: null, expiresAt: 0 };
 
 async function momoToken() {
@@ -467,6 +495,7 @@ app.post("/api/redeem", async (req, res) => {
       ...(data.planId ? { planId: data.planId } : {}),
       ...(data.discountPercent ? { discountPercent: data.discountPercent } : {}),
       ...(data.quizIds ? { quizIds: data.quizIds } : {}),
+      ...(data.coinValue ? { coinValue: data.coinValue } : {}),
       redeemedAt: Date.now(),
     };
 
@@ -490,6 +519,20 @@ app.post("/api/redeem", async (req, res) => {
       const existing = userSnap.val()?.unlockedQuizIds ?? [];
       updates[`users/${uid}/unlockedQuizIds`] = Array.from(new Set([...existing, ...data.quizIds]));
     }
+    if (data.type === "market") {
+      updates[`users/${uid}/marketAccess`] = true;
+    }
+    if (data.type === "coins") {
+      const coinValue = Math.max(1, Number(data.coinValue) || 0);
+      updates[`users/${uid}/coins`] = ServerValue.increment(coinValue);
+      updates[`users/${uid}/coinsEarned`] = ServerValue.increment(coinValue);
+      updates[`coinsLedger/${uid}/code-${code}-${Date.now()}`] = {
+        amount: coinValue,
+        type: "code",
+        at: Date.now(),
+        ref: code,
+      };
+    }
 
     await db.ref(`redeemed/${uid}/${code}`).set(record);
     await db.ref().update({
@@ -509,7 +552,125 @@ app.post("/api/redeem", async (req, res) => {
     if (data.type === "pack" && data.quizIds) {
       return res.json({ ok: true, message: `${data.quizIds.length} premium quiz(zes) unlocked.` });
     }
+    if (data.type === "market") {
+      return res.json({ ok: true, message: "Market unlocked! Head to the Market to spend your CooperCoins." });
+    }
+    if (data.type === "coins") {
+      return res.json({
+        ok: true,
+        message: `${Math.max(1, Number(data.coinValue) || 0)} CooperCoins added to your wallet!`,
+      });
+    }
     return res.json({ ok: true, message: "Code redeemed!" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/earn  body: { uid, quizId, submissionId, score, total }
+// Public: awards CooperCoins for a completed quiz attempt. Server-verified: the
+// result must exist in results/<uid>/<quizId> with a matching score, and each
+// submissionId pays at most once (every attempt pays).
+app.post("/api/earn", async (req, res) => {
+  const { uid, quizId, submissionId, score, total } = req.body ?? {};
+  if (!uid || !quizId || !submissionId) {
+    return res.status(400).json({ error: "Need uid, quizId and submissionId" });
+  }
+  const correct = Number(score);
+  if (!Number.isFinite(correct) || correct < 0) {
+    return res.status(400).json({ error: "Invalid score" });
+  }
+  try {
+    const [resultSnap, alreadySnap] = await Promise.all([
+      db.ref(`results/${uid}/${quizId}`).once("value"),
+      db.ref(`coinsLedger/${uid}/${submissionId}`).once("value"),
+    ]);
+    const result = resultSnap.val();
+    if (!result || Number(result.score) !== correct) {
+      return res.status(400).json({ error: "Result not found or score mismatch" });
+    }
+    if (alreadySnap.exists()) {
+      return res.json({ ok: true, earned: 0, balance: (await db.ref(`users/${uid}/coins`).once("value")).val() ?? 0 });
+    }
+    const earned = correct * COINS_PER_CORRECT;
+    await db.ref().update({
+      [`users/${uid}/coins`]: ServerValue.increment(earned),
+      [`users/${uid}/coinsEarned`]: ServerValue.increment(earned),
+      [`coinsLedger/${uid}/${submissionId}`]: {
+        amount: earned,
+        type: "quiz",
+        at: Date.now(),
+        ref: quizId,
+      },
+    });
+    const balance = (await db.ref(`users/${uid}/coins`).once("value")).val() ?? 0;
+    res.json({ ok: true, earned, balance });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/market/items — public catalog (also available client-side in src/data/market.ts)
+app.get("/api/market/items", (_req, res) => {
+  res.json(Object.values(MARKET_ITEMS));
+});
+
+// POST /api/market/purchase  body: { uid, itemId }
+// Public: spends CooperCoins on a market item. Server checks marketAccess and
+// balance, deducts coins, and records ownership in walletItems.
+app.post("/api/market/purchase", async (req, res) => {
+  const { uid, itemId } = req.body ?? {};
+  if (!uid || !itemId) return res.status(400).json({ error: "Need uid and itemId" });
+  const item = MARKET_ITEMS[itemId];
+  if (!item) return res.status(404).json({ error: "Unknown item" });
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user.marketAccess) return res.status(403).json({ error: "Market locked — redeem a code to unlock it." });
+    const balance = Number(user.coins) || 0;
+    if (balance < item.price) return res.status(400).json({ error: `Not enough CooperCoins (need ${item.price}).` });
+    const ownedSnap = await db.ref(`walletItems/${uid}/${itemId}`).once("value");
+    if (ownedSnap.exists()) return res.status(400).json({ error: "You already own this item." });
+
+    const purchaseId = `pur-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    const updates = {
+      [`users/${uid}/coins`]: ServerValue.increment(-item.price),
+      [`walletItems/${uid}/${itemId}`]: { itemId, acquiredAt: Date.now() },
+      [`coinsLedger/${uid}/${purchaseId}`]: {
+        amount: -item.price,
+        type: "purchase",
+        at: Date.now(),
+        ref: itemId,
+      },
+    };
+    if (item.kind === "frame") updates[`users/${uid}/avatarFrame`] = itemId;
+    if (item.kind === "card_design") updates[`users/${uid}/cardDesign`] = itemId;
+    await db.ref().update(updates);
+    res.json({ ok: true, balance: balance - item.price, item });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/card?uid=... — lazy-issues the user's digital CooperCard
+app.get("/api/card", async (req, res) => {
+  const uid = String(req.query.uid ?? "");
+  if (!uid) return res.status(400).json({ error: "Need uid" });
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
+    if (!user) return res.status(404).json({ error: "User not found" });
+    let card = user.card;
+    if (!card) {
+      card = {
+        number: randomCardNumber(),
+        holderName: user.displayName ?? user.email?.split("@")[0] ?? "Student",
+        issuedAt: Date.now(),
+      };
+      await db.ref(`users/${uid}/card`).set(card);
+    }
+    res.json(card);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

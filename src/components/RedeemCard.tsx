@@ -39,7 +39,7 @@ export default function RedeemCard() {
         <h2 className="font-bold text-slate-900 dark:text-white">Redeem a code</h2>
       </div>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Got a gift, promo, discount or quiz code? Enter it below.
+        Got a gift, promo, market, coins, discount or quiz code? Enter it below.
       </p>
       <form onSubmit={submit} className="mt-4 flex gap-2">
         <input

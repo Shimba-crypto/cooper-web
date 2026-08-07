@@ -6,6 +6,7 @@ import { db } from "../firebase";
 import { useQuizzes } from "../hooks/useQuizzes";
 import { getQuizOffline } from "./QuizListPage";
 import { useAuth } from "../context/AuthContext";
+import { API_URL } from "../config";
 import type { Quiz } from "../types";
 import { canAccessPremiumQuiz } from "../utils/redeem";
 import RedeemCard from "../components/RedeemCard";
@@ -43,6 +44,7 @@ export default function QuizTakePage() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [score, setScore] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [earnedCC, setEarnedCC] = useState<number | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const autoSubmitted = useRef(false);
 
@@ -102,6 +104,17 @@ export default function QuizTakePage() {
             };
           });
         }
+        const submissionId = `${quiz.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        fetch(`${API_URL}/api/earn`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid: user.uid, quizId: quiz.id, submissionId, score: correct, total: quiz.questions.length }),
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data?.earned > 0) setEarnedCC(data.earned);
+          })
+          .catch(() => {});
       } catch {
         // offline — results stay local
       }
@@ -247,6 +260,11 @@ export default function QuizTakePage() {
             <p className="mt-2 text-lg font-semibold text-emerald-100">
               {percentage}% — {percentage >= 75 ? "Excellent!" : percentage >= 50 ? "Good job!" : "Keep practicing!"}
             </p>
+            {earnedCC !== null && earnedCC > 0 && (
+              <p className="mt-3 inline-block rounded-full bg-amber-400/90 px-4 py-1.5 text-sm font-extrabold text-amber-950 shadow">
+                +{earnedCC} CooperCoins earned!
+              </p>
+            )}
           </div>
           <div className="space-y-6 p-5 sm:p-8">
             {results.map(({ question, chosen, correct }, i) => (

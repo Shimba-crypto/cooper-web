@@ -1,24 +1,27 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Calendar, Pencil, Trophy, Users } from "lucide-react";
+import { Calendar, Coins, CreditCard, Pencil, Trophy, Users } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { subscribeProfile, getProfiles } from "../data/fetchProfiles";
+import { marketItemById } from "../data/market";
 import Avatar from "../components/Avatar";
 import FollowButton from "../components/FollowButton";
 import Spinner from "../components/Spinner";
-import type { LeaderboardEntry, Profile } from "../types";
+import type { LeaderboardEntry, Profile, WalletItem } from "../types";
 
 export default function ProfilePage() {
   const { uid } = useParams<{ uid: string }>();
-  const { user } = useAuth();
+  const { user, appUser } = useAuth();
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [followerUids, setFollowerUids] = useState<string[]>([]);
   const [followingUids, setFollowingUids] = useState<string[]>([]);
   const [leaderboardEntry, setLeaderboardEntry] = useState<LeaderboardEntry | null>(null);
   const [list, setList] = useState<"followers" | "following" | null>(null);
   const [listProfiles, setListProfiles] = useState<Profile[] | null>(null);
+  const [wallet, setWallet] = useState<Record<string, WalletItem> | null>(null);
+  const isMe = user?.uid === uid;
 
   useEffect(() => {
     if (!uid) return;
@@ -32,13 +35,20 @@ export default function ProfilePage() {
     const unsubscribeLeaderboard = onValue(ref(db, `leaderboard/${uid}`), (snapshot) =>
       setLeaderboardEntry(snapshot.val() ?? null)
     );
+    const unsubscribeWallet = isMe
+      ? onValue(ref(db, `walletItems/${uid}`), (snapshot) => setWallet(snapshot.val() ?? {}))
+      : (() => {
+          setWallet(null);
+          return () => {};
+        })();
     return () => {
       unsubscribeProfile();
       unsubscribeFollowers();
       unsubscribeFollowing();
       unsubscribeLeaderboard();
+      unsubscribeWallet();
     };
-  }, [uid]);
+  }, [uid, isMe]);
 
   useEffect(() => {
     if (!list) {
@@ -69,7 +79,7 @@ export default function ProfilePage() {
     );
   }
 
-  const isMe = user?.uid === uid;
+  const badges = wallet ? Object.values(wallet).filter((w) => marketItemById(w.itemId)?.kind === "badge") : [];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
@@ -77,7 +87,13 @@ export default function ProfilePage() {
         <div className="h-24 bg-gradient-to-br from-emerald-700 to-teal-900" />
         <div className="px-5 pb-8 sm:px-8">
           <div className="-mt-10 flex flex-wrap items-end justify-between gap-3">
-            <Avatar src={profile.avatarUrl} name={profile.displayName} size={88} className="ring-4 ring-white dark:ring-slate-900" />
+            <Avatar
+              src={profile.avatarUrl}
+              name={profile.displayName}
+              size={88}
+              frame={isMe ? appUser?.avatarFrame : undefined}
+              className="ring-4 ring-white dark:ring-slate-900"
+            />
             <div className="flex flex-wrap items-center gap-2 pb-1">
               {isMe && (
                 <Link to="/settings" className="btn-secondary">
@@ -127,6 +143,27 @@ export default function ProfilePage() {
               </p>
             </div>
           </div>
+
+          {isMe && (
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800/50">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
+                <Coins className="h-4 w-4 text-amber-500" />
+                <strong className="text-amber-700 dark:text-amber-400">{appUser?.coins ?? 0}</strong> CooperCoins
+              </span>
+              <Link to="/card" className="flex items-center gap-1 text-sm font-semibold text-emerald-600 hover:underline">
+                <CreditCard className="h-4 w-4" /> My card
+              </Link>
+              {badges.length > 0 && (
+                <span className="flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400">
+                  {badges.map((b) => (
+                    <span key={b.itemId} title={marketItemById(b.itemId)?.name}>
+                      {marketItemById(b.itemId)?.icon}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </div>
+          )}
 
           {list && (
             <div className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-800">

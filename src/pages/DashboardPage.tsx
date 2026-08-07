@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Bookmark, Eye, Star, TrendingUp } from "lucide-react";
+import { Bookmark, Coins, CreditCard, Eye, ShoppingBag, Star, TrendingUp } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { usePapers } from "../hooks/usePapers";
@@ -115,6 +115,35 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      <div className="card mt-8 flex flex-wrap items-center gap-4 p-6">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white shadow">
+            <CreditCard className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="font-bold text-slate-900 dark:text-white">Your CooperCard</h2>
+            <p className="truncate text-sm text-slate-500 dark:text-slate-400">
+              {appUser?.card?.number ?? "Tap to issue your digital card"}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2 dark:bg-amber-950/40">
+          <Coins className="h-5 w-5 text-amber-500" />
+          <span className="text-xl font-extrabold text-amber-700 dark:text-amber-400">
+            {appUser?.coins ?? 0}
+          </span>
+          <span className="text-xs font-semibold text-amber-600 dark:text-amber-500">CC</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link to="/card" className="btn-secondary !px-4 !py-1.5 text-sm">
+            <CreditCard className="h-4 w-4" /> My card
+          </Link>
+          <Link to="/market" className="btn-primary !px-4 !py-1.5 text-sm">
+            <ShoppingBag className="h-4 w-4" /> Market
+          </Link>
+        </div>
+      </div>
+
       <div className="mt-10 grid gap-8 lg:grid-cols-2">
         <section className="card p-6">
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -179,7 +208,7 @@ export default function DashboardPage() {
       </div>
 
       {myResults && Object.keys(myResults).length > 0 && (
-        <section className="card mt-8 p-6">
+      <section className="card mt-8 p-6">
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">My quiz results</h2>
           <div className="mt-4 space-y-2">
             {Object.entries(myResults)
