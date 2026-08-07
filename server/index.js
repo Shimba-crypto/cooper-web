@@ -929,7 +929,215 @@ app.post("/api/market/purchase", async (req, res) => {
   }
 });
 
-// GET /api/card?uid=... — lazy-issues the user's digital CooperCard
+// POST /api/trade/offer  body: { fromUid, toUid, itemId, priceCC, reason? }
+// Trade offer: user A lists an item for sale to user B at CC price.
+app.post("/api/trade/offer", async (req, res) => {
+  const { fromUid, toUid, itemId, priceCC, reason } = req.body ?? {};
+  if (!fromUid || !toUid || !itemId || !Number.isFinite(priceCC) || priceCC <= 0) {
+    return res.status(400).json({ error: "Need fromUid, toUid, itemId, and priceCC" });
+  }
+  if (fromUid === toUid) return res.status(400).json({ error: "Cannot trade to yourself" });
+  try {
+    const fromSnap = await db.ref(`users/${fromUid}`).once("value");
+    const toSnap = await db.ref(`users/${toUid}`).once("value");
+    const fromUser = fromSnap.val();
+    const toUser = toSnap.val();
+    if (!fromUser || !toUser) return res.status(404).json({ error: "User not found" });
+    if (fromUser.uid === toUid || toUser.uid === fromUid)
+      return res.status(400).json({ error: "Cannot trade with yourself" });
+    const fromOwned = (fromUser.walletItems || {})[itemId];
+    if (!fromOwned) return res.status(404).json({ error: "You don't own this item" });
+    const fromItem = MARKET_ITEMS[itemId];
+    if (!fromItem || fromItem.kind !== "frame" && fromItem.kind !== "badge" && fromItem.kind !== "overlay") {
+      return res.status(400).json({ error: "Only cosmetic items can be traded" });
+    }
+    if (fromUser.coins < priceCC) return res.status(400).json({ error: `Not enough CC (need ${priceCC})` });
+    const tradeId = `trade-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    await db.ref().update({
+      [`tradeOffers/${tradeId}`]: {
+        fromUid, toUid, itemId, priceCC, reason: reason ?? "No reason",
+        status: "pending", createdAt: Date.now(),
+      },
+      [`coinsLedger/${fromUid}/${tradeId}`]: {
+        amount: -priceCC, type: "trade_offer", at: Date.now(), ref: toUid,
+      },
+      [`coinsLedger/${toUid}/${tradeId}`]: {
+        amount: priceCC, type: "trade_offer", at: Date.now(), ref: fromUid,
+      },
+    });
+    res.json({ ok: true, tradeId, priceCC, fromItem });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/trade/accepted  body: { uid } — list trades the user is involved in
+app.get("/api/trade/accepted", async (req, res) => {
+  const { uid } = req.body ?? {};
+  if (!uid) return res.status(400).json({ error: "Need uid" });
+  try {
+    const tradesSnap = await db.ref(`tradeOffers/${uid}`).once("value");
+    const trades = tradesSnap.val() ?? {};
+    const accepted = Object.entries(trades).filter(([, t]) => t.status === "accepted").map(([, t]) => t);
+    res.json({ accepted });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/trade/accept  body: { tradeId }
+app.put("/api/trade/accept", async (req, res) => {
+  const { tradeId } = req.body ?? {};
+  if (!tradeId) return res.status(400).json({ error: "Need tradeId" });
+  try {
+    const tradeSnap = await db.ref(`tradeOffers/${tradeId}`).once("value");
+    const trade = tradeSnap.val();
+    if (!trade || trade.status !== "pending") return res.status(400).json({ error: "Trade not pending" });
+    const fromUser = (await db.ref(`users/${trade.fromUid}`).once("value")).val();
+    const toUser = (await db.ref(`users/${trade.toUid}`).once("value")).val();
+    if (!fromUser || !toUser) return res.status(404).json({ error: "User not found" });
+    // Deduct from fromUser, credit to toUser
+    await db.ref().update({
+      [`users/${trade.fromUid}/coins`]: ServerValue.increment(-trade.priceCC),
+      [`users/${trade.toUid}/coins`]: ServerValue.increment(trade.priceCC),
+      [`coinsLedger/${trade.fromUid}/${tradeId}`]: {
+        amount: -trade.priceCC,
+        type: "trade",
+        at: Date.now(),
+        ref: trade.toUid,
+      },
+      [`coinsLedger/${trade.toUid}/${tradeId}`]: {
+        amount: trade.priceCC,
+        type: "trade",
+        at: Date.now(),
+        ref: trade.fromUid,
+      },
+      [`tradeOffers/${tradeId}`]: { status: "accepted", acceptedAt: Date.now() },
+      [`walletItems/${trade.fromUid}/${trade.itemId}`]: { itemId: trade.itemId, acquiredAt: Date.now() },
+      [`walletItems/${trade.toUid}/${trade.itemId}`]: { itemId: trade.itemId, acquiredAt: Date.now() },
+    });
+    applyItemEffect({ [`users/${trade.fromUid}/coinsMultiplier`]: { mult: 1, expiresAt: 0 } }, trade.fromUid);
+    applyItemEffect({ [`users/${trade.toUid}/coinsMultiplier`]: { mult: 1, expiresAt: 0 } }, trade.toUid);
+    res.json({ ok: true, tradeId, priceCC: trade.priceCC, fromItem: MARKET_ITEMS[trade.itemId] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/trade/decline  body: { tradeId }
+app.put("/api/trade/decline", async (req, res) => {
+  const { tradeId } = req.body ?? {};
+  if (!tradeId) return res.status(400).json({ error: "Need tradeId" });
+  try {
+    const tradeSnap = await db.ref(`tradeOffers/${tradeId}`).once("value");
+    const trade = tradeSnap.val();
+    if (!trade || trade.status !== "pending") return res.status(400).json({ error: "Trade not pending" });
+    await db.ref().update({
+      [`tradeOffers/${tradeId}`]: { status: "declined", declinedAt: Date.now() },
+      [`coinsLedger/${trade.fromUid}/${tradeId}`]: {
+        amount: 0,
+        type: "trade_decline",
+        at: Date.now(),
+        ref: trade.toUid,
+      },
+      [`coinsLedger/${trade.toUid}/${tradeId}`]: {
+        amount: 0,
+        type: "trade_decline",
+        at: Date.now(),
+        ref: trade.fromUid,
+      },
+    });
+    res.json({ ok: true, tradeId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/trade/list  body: { uid, itemId, priceCC, reason? }
+// Create a marketplace listing (public, anyone can buy).
+app.post("/api/trade/list", async (req, res) => {
+  const { uid, itemId, priceCC, reason } = req.body ?? {};
+  if (!uid || !itemId || !Number.isFinite(priceCC) || priceCC <= 0) {
+    return res.status(400).json({ error: "Need uid, itemId, priceCC" });
+  }
+  const item = MARKET_ITEMS[itemId];
+  if (!item) return res.status(404).json({ error: "Unknown item" });
+  if (item.kind !== "frame" && item.kind !== "badge" && item.kind !== "overlay" && item.kind !== "confetti") return res.status(400).json({ error: "Only frame/badge/overlay/confetti can be listed" });
+  if (item.kind === "confetti") return res.status(400).json({ error: "Confetti can't be listed — use Market instead" });
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    if (!userSnap.exists()) return res.status(404).json({ error: "User not found" });
+    const price = Math.round(priceCC * 1.05);
+    const listingId = `list-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    await db.ref().update({
+      [`tradeListings/${listingId}`]: {
+        sellerUid: uid, itemId, price, reason: reason ?? "",
+        createdAt: Date.now(), expiresAt: Date.now() + 30 * 86400000,
+      },
+      [`walletItems/${uid}/${itemId}`]: { itemId, acquiredAt: Date.now() },
+      [`coinsLedger/${uid}/${listingId}`]: {
+        amount: -price, type: "listing", at: Date.now(), ref: itemId,
+      },
+    });
+    res.json({ ok: true, listingId, price, item });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/trade/listings?seller=uid — public listings for a seller
+app.get("/api/trade/listings", async (req, res) => {
+  const { sellerUid } = req.query;
+  if (!sellerUid) return res.status(400).json({ error: "Need sellerUid" });
+  try {
+    const snap = await db.ref(`tradeListings/${sellerUid}`).once("value");
+    const listings = snap.val() ?? {};
+    const items = Object.entries(listings).map(([lid, l]) => ({
+      listingId: lid, sellerUid: l.sellerUid, itemId: l.itemId, price: l.price,
+      reason: l.reason || "", createdAt: l.createdAt, expiresAt: l.expiresAt,
+    }));
+    res.json({ listings: items });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/trade/confirm  body: { listingId, buyerUid }
+app.put("/api/trade/confirm", async (req, res) => {
+  const { listingId, buyerUid } = req.body ?? {};
+  if (!listingId || !buyerUid) return res.status(400).json({ error: "Need listingId and buyerUid" });
+  try {
+    const listingSnap = await db.ref(`tradeListings/${listingId}`).once("value");
+    const listing = listingSnap.val();
+    if (!listing || listing.sellerUid !== buyerUid) return res.status(400).json({ error: "Not this listing" });
+    const sellerSnap = await db.ref(`users/${listing.sellerUid}`).once("value");
+    const seller = sellerSnap.val();
+    if (!seller) return res.status(404).json({ error: "Seller not found" });
+    if (seller.coins < listing.price) return res.status(400).json({ error: "Not enough CC" });
+    const item = MARKET_ITEMS[listing.itemId];
+    const buyer = (await db.ref(`users/${buyerUid}`).once("value")).val();
+    const purchaseId = `pur-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    const updates = {
+      [`users/${listing.sellerUid}/coins`]: ServerValue.increment(-listing.price),
+      [`users/${buyerUid}/coins`]: ServerValue.increment(listing.price),
+      [`walletItems/${listing.sellerUid}/${listing.itemId}`]: { itemId: listing.itemId, acquiredAt: Date.now() },
+      [`walletItems/${buyerUid}/${listing.itemId}`]: { itemId: listing.itemId, acquiredAt: Date.now() },
+      [`coinsLedger/${listing.sellerUid}/${purchaseId}`]: {
+        amount: -listing.price, type: "listing_confirm", at: Date.now(), ref: listing.itemId,
+      },
+      [`coinsLedger/${buyerUid}/${purchaseId}`]: {
+        amount: listing.price, type: "listing_confirm", at: Date.now(), ref: listing.itemId,
+      },
+      [`tradeListings/${listingId}`]: {
+        status: "confirmed", confirmedAt: Date.now(), buyerUid
+      },
+    };
+    await db.ref().update(updates);
+    res.json({ ok: true, listingId, price: listing.price, item });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 app.get("/api/card", async (req, res) => {
   const uid = String(req.query.uid ?? "");
   if (!uid) return res.status(400).json({ error: "Need uid" });
