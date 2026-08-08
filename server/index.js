@@ -951,7 +951,7 @@ app.post("/api/trade/offer", async (req, res) => {
     if (!fromItem || fromItem.kind !== "frame" && fromItem.kind !== "badge" && fromItem.kind !== "overlay") {
       return res.status(400).json({ error: "Only cosmetic items can be traded" });
     }
-    if (fromUser.coins < priceCC) return res.status(400).json({ error: `Not enough CC (need ${priceCC})` });
+    if ((toUser.coins ?? 0) < priceCC) return res.status(400).json({ error: `Buyer needs ${priceCC} CC` });
     const tradeId = `trade-${Date.now()}-${randomUUID().slice(0, 6)}`;
     await db.ref().update({
       [`tradeOffers/${tradeId}`]: {
@@ -959,10 +959,10 @@ app.post("/api/trade/offer", async (req, res) => {
         status: "pending", createdAt: Date.now(),
       },
       [`coinsLedger/${fromUid}/${tradeId}`]: {
-        amount: -priceCC, type: "trade_offer", at: Date.now(), ref: toUid,
+        amount: 0, type: "trade_offer", at: Date.now(), ref: toUid,
       },
       [`coinsLedger/${toUid}/${tradeId}`]: {
-        amount: priceCC, type: "trade_offer", at: Date.now(), ref: fromUid,
+        amount: 0, type: "trade_offer", at: Date.now(), ref: fromUid,
       },
     });
     res.json({ ok: true, tradeId, priceCC, fromItem });
@@ -971,81 +971,75 @@ app.post("/api/trade/offer", async (req, res) => {
   }
 });
 
-// POST /api/trade/accepted  body: { uid } — list trades the user is involved in
+// POST /api/trade/accepted  body: { uid } — list trades the user is involved in (as buyer or seller)
 app.post("/api/trade/accepted", async (req, res) => {
   const { uid } = req.body ?? {};
   if (!uid) return res.status(400).json({ error: "Need uid" });
   try {
-    const tradesSnap = await db.ref(`tradeOffers/${uid}`).once("value");
+    const tradesSnap = await db.ref("tradeOffers").once("value");
     const trades = tradesSnap.val() ?? {};
-    const accepted = Object.entries(trades).filter(([, t]) => t.status === "accepted").map(([, t]) => t);
-    res.json({ accepted });
+    const involved = Object.entries(trades)
+      .filter(([, t]) => t.fromUid === uid || t.toUid === uid)
+      .map(([tradeId, t]) => ({ tradeId, ...t }))
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    res.json({ trades: involved });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PUT /api/trade/accept  body: { tradeId }
+// PUT /api/trade/accept  body: { tradeId, uid } — buyer accepts the offer, pays the seller, item moves
 app.put("/api/trade/accept", async (req, res) => {
-  const { tradeId } = req.body ?? {};
+  const { tradeId, uid } = req.body ?? {};
   if (!tradeId) return res.status(400).json({ error: "Need tradeId" });
   try {
     const tradeSnap = await db.ref(`tradeOffers/${tradeId}`).once("value");
     const trade = tradeSnap.val();
     if (!trade || trade.status !== "pending") return res.status(400).json({ error: "Trade not pending" });
+    if (uid && trade.toUid !== uid) return res.status(403).json({ error: "Only the buyer can accept" });
     const fromUser = (await db.ref(`users/${trade.fromUid}`).once("value")).val();
     const toUser = (await db.ref(`users/${trade.toUid}`).once("value")).val();
     if (!fromUser || !toUser) return res.status(404).json({ error: "User not found" });
-    // Deduct from fromUser, credit to toUser
+    if ((toUser.coins ?? 0) < trade.priceCC)
+      return res.status(400).json({ error: `Buyer needs ${trade.priceCC} CC` });
     await db.ref().update({
-      [`users/${trade.fromUid}/coins`]: ServerValue.increment(-trade.priceCC),
-      [`users/${trade.toUid}/coins`]: ServerValue.increment(trade.priceCC),
+      [`users/${trade.toUid}/coins`]: ServerValue.increment(-trade.priceCC),
+      [`users/${trade.fromUid}/coins`]: ServerValue.increment(trade.priceCC),
       [`coinsLedger/${trade.fromUid}/${tradeId}`]: {
-        amount: -trade.priceCC,
+        amount: trade.priceCC,
         type: "trade",
         at: Date.now(),
         ref: trade.toUid,
       },
       [`coinsLedger/${trade.toUid}/${tradeId}`]: {
-        amount: trade.priceCC,
+        amount: -trade.priceCC,
         type: "trade",
         at: Date.now(),
         ref: trade.fromUid,
       },
-      [`tradeOffers/${tradeId}`]: { status: "accepted", acceptedAt: Date.now() },
-      [`walletItems/${trade.fromUid}/${trade.itemId}`]: { itemId: trade.itemId, acquiredAt: Date.now() },
+      [`tradeOffers/${tradeId}/status`]: "accepted",
+      [`tradeOffers/${tradeId}/acceptedAt`]: Date.now(),
+      [`walletItems/${trade.fromUid}/${trade.itemId}`]: null,
       [`walletItems/${trade.toUid}/${trade.itemId}`]: { itemId: trade.itemId, acquiredAt: Date.now() },
     });
-    applyItemEffect({ [`users/${trade.fromUid}/coinsMultiplier`]: { mult: 1, expiresAt: 0 } }, trade.fromUid);
-    applyItemEffect({ [`users/${trade.toUid}/coinsMultiplier`]: { mult: 1, expiresAt: 0 } }, trade.toUid);
     res.json({ ok: true, tradeId, priceCC: trade.priceCC, fromItem: MARKET_ITEMS[trade.itemId] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PUT /api/trade/decline  body: { tradeId }
+// PUT /api/trade/decline  body: { tradeId, uid } — buyer declines the offer
 app.put("/api/trade/decline", async (req, res) => {
-  const { tradeId } = req.body ?? {};
+  const { tradeId, uid } = req.body ?? {};
   if (!tradeId) return res.status(400).json({ error: "Need tradeId" });
   try {
     const tradeSnap = await db.ref(`tradeOffers/${tradeId}`).once("value");
     const trade = tradeSnap.val();
     if (!trade || trade.status !== "pending") return res.status(400).json({ error: "Trade not pending" });
+    if (uid && trade.toUid !== uid) return res.status(403).json({ error: "Only the buyer can decline" });
     await db.ref().update({
-      [`tradeOffers/${tradeId}`]: { status: "declined", declinedAt: Date.now() },
-      [`coinsLedger/${trade.fromUid}/${tradeId}`]: {
-        amount: 0,
-        type: "trade_decline",
-        at: Date.now(),
-        ref: trade.toUid,
-      },
-      [`coinsLedger/${trade.toUid}/${tradeId}`]: {
-        amount: 0,
-        type: "trade_decline",
-        at: Date.now(),
-        ref: trade.fromUid,
-      },
+      [`tradeOffers/${tradeId}/status`]: "declined",
+      [`tradeOffers/${tradeId}/declinedAt`]: Date.now(),
     });
     res.json({ ok: true, tradeId });
   } catch (err) {
