@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { BookOpen, FileQuestion, FileText, Search } from "lucide-react";
+import { BookOpen, FileQuestion, FileText, HelpCircle, Search } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
+import { searchJohnWeb, type JohnWebSearchResult } from "../data/johnwebApi";
 import Spinner from "../components/Spinner";
 import type { Note, Paper, Quiz } from "../types";
 
@@ -10,7 +11,7 @@ interface Result {
   id: string;
   title: string;
   subject: string;
-  type: "paper" | "quiz" | "note";
+  type: "paper" | "quiz" | "note" | "jw-paper" | "jw-question";
   link: string;
 }
 
@@ -20,6 +21,7 @@ export default function SearchPage() {
   const [papers, setPapers] = useState<Paper[] | null>(null);
   const [quizzes, setQuizzes] = useState<Quiz[] | null>(null);
   const [notes, setNotes] = useState<Note[] | null>(null);
+  const [jw, setJw] = useState<JohnWebSearchResult | null>(null);
 
   useEffect(() => {
     const u1 = onValue(ref(db, "papers"), (s) => setPapers(Object.values(s.val() ?? {})));
@@ -27,6 +29,18 @@ export default function SearchPage() {
     const u3 = onValue(ref(db, "notes"), (s) => setNotes(Object.values(s.val() ?? {})));
     return () => { u1(); u2(); u3(); };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setJw(null);
+    if (query.trim().length < 2) return;
+    searchJohnWeb(query).then((data) => {
+      if (!cancelled) setJw(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [query]);
 
   const setQuery = (q: string) => {
     const p = new URLSearchParams(params);
@@ -55,17 +69,38 @@ export default function SearchPage() {
         results.push({ id: n.id, title: n.title, subject: n.subject, type: "note", link: `/notes/${n.id}` });
       }
     });
+    (jw?.papers ?? []).forEach((p) => {
+      results.push({
+        id: p.id,
+        title: p.title,
+        subject: `Grade ${p.grade}`,
+        type: "jw-paper",
+        link: `/paper/${p.id}`,
+      });
+    });
+    (jw?.questions ?? []).forEach((question) => {
+      results.push({
+        id: question.id,
+        title: `${question.paperTitle} — Q${question.questionNumber}: ${question.text}`,
+        subject: "John Web",
+        type: "jw-question",
+        link: `/paper/${question.paperId}`,
+      });
+    });
   }
 
   const icon = (type: Result["type"]) => {
-    if (type === "paper") return <BookOpen className="h-4 w-4" />;
+    if (type === "paper" || type === "jw-paper") return <BookOpen className="h-4 w-4" />;
     if (type === "quiz") return <FileQuestion className="h-4 w-4" />;
+    if (type === "jw-question") return <HelpCircle className="h-4 w-4" />;
     return <FileText className="h-4 w-4" />;
   };
 
   const typeLabel = (type: Result["type"]) => {
     if (type === "paper") return "Paper";
     if (type === "quiz") return "Quiz";
+    if (type === "jw-paper") return "John Web paper";
+    if (type === "jw-question") return "John Web question";
     return "Note";
   };
 
@@ -89,9 +124,17 @@ export default function SearchPage() {
         <Spinner label="Loading…" />
       ) : q ? (
         results.length === 0 ? (
-          <p className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">
-            No results for "<span className="font-semibold">{query}</span>".
-          </p>
+          <div className="mt-8 text-center">
+            {q.length >= 2 && jw === null ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Searching the John Web library…
+              </p>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                No results for "<span className="font-semibold">{query}</span>".
+              </p>
+            )}
+          </div>
         ) : (
           <div className="mt-6 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
