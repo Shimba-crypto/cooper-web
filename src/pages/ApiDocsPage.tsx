@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { BookOpen, FileText, Lock, Mail, ShieldCheck } from "lucide-react";
-import { API_URL, JOHNWEB_URL } from "../config";
+import { API_URL } from "../config";
 import { PLANS, hasInteractiveAccess, PLAN_LEVEL } from "../utils/plans";
 import type { PlanId } from "../types";
 
@@ -176,52 +176,7 @@ const AUTH_STYLE: Record<string, string> = {
   user: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400",
   admin: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400",
   webhook: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400",
-  bot: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400",
 };
-
-const BOT_ENDPOINTS: Endpoint[] = [
-  {
-    method: "POST",
-    path: "/api/chat/BOT_ID",
-    auth: "public",
-    body: '{ "message": "Explain photosynthesis for Grade 7" }',
-    description: "Chat with a John Web teacher bot (BOT_ID identifies the bot).",
-  },
-  {
-    method: "POST",
-    path: "/api/bot/grade",
-    auth: "bot",
-    body: '{ "answerId": "ANSWER_ID", "isCorrect": true, "feedback": "Good job!" }',
-    description: "Auto-grade a student answer.",
-  },
-  {
-    method: "POST",
-    path: "/api/bot/quiz",
-    auth: "bot",
-    body: '{ "subject": "Mathematics", "grade": "7", "count": 5 }',
-    description: "Generate a quiz for a subject/grade; returns a question list.",
-  },
-  {
-    method: "POST",
-    path: "/api/bot/study-tips",
-    auth: "bot",
-    body: '{ "subject": "Mathematics" }',
-    description: "Get AI study tips for a subject.",
-  },
-  {
-    method: "POST",
-    path: "/api/bot/batch-grade",
-    auth: "bot",
-    body: '{ "answerIds": ["ANSWER_1", "ANSWER_2"] }',
-    description: "Grade multiple answers at once.",
-  },
-  {
-    method: "GET",
-    path: "/api/papers?grade=7",
-    auth: "public",
-    description: "Fetch papers (public, no auth needed).",
-  },
-];
 
 function planRow(planId: PlanId, price: string, unlocks: string[]) {
   return (
@@ -315,85 +270,6 @@ export default function ApiDocsPage() {
             <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
             Webhook endpoints are called by MTN / Airtel / DPO and need no key.
           </p>
-        </div>
-      </section>
-
-      <section className="mt-10">
-        <h2 className="text-xl font-bold text-slate-900 dark:text-white">John Web Bot API</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Endpoints on the John Web server ({" "}
-          <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs dark:bg-slate-800">{JOHNWEB_URL}</code>{" "}
-          ). Create a bot in the John Web Admin Panel to get a{" "}
-          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">johnbot-*</code> API key,
-          then send it in the{" "}
-          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">Authorization: Bearer johnbot-…</code>{" "}
-          header. Public endpoints need no key.
-        </p>
-        <div className="mt-4 space-y-3">
-          {BOT_ENDPOINTS.map((e) => (
-            <div key={e.path} className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded px-2 py-0.5 text-xs font-bold ${METHOD_STYLE[e.method]}`}>{e.method}</span>
-                <code className="rounded bg-slate-100 px-2 py-0.5 text-sm font-semibold text-slate-800 dark:bg-slate-800 dark:text-slate-200">
-                  {e.path}
-                </code>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${AUTH_STYLE[e.auth] ?? AUTH_STYLE.public}`}>
-                  {e.auth}
-                </span>
-              </div>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{e.description}</p>
-              {e.body && (
-                <p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">
-                  body: <code className="text-slate-500 dark:text-slate-400">{e.body}</code>
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <div>
-            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Python</h3>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
-{`import requests
-
-API_KEY = "johnbot-YOUR_API_KEY"
-
-# Chat with a teacher bot (public)
-res = requests.post(
-    f"{JOHNWEB_URL}/api/chat/BOT_ID",
-    json={"message": "Explain photosynthesis for Grade 7"},
-)
-print(res.json()["reply"])
-
-# Generate a quiz (bot key)
-res = requests.post(
-    f"{JOHNWEB_URL}/api/bot/quiz",
-    headers={"Authorization": f"Bearer {API_KEY}"},
-    json={"subject": "Mathematics", "grade": "7", "count": 5},
-)
-for q in res.json()["quiz"]:
-    print(q["questionNumber"], q["text"])`}
-            </pre>
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">cURL</h3>
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs leading-relaxed text-slate-100">
-{`# Chat with a teacher bot (public)
-curl -X POST ${JOHNWEB_URL}/api/chat/BOT_ID \\
-  -H "Content-Type: application/json" \\
-  -d '{"message": "Explain photosynthesis"}'
-
-# Auto-grade an answer (bot key)
-curl -X POST ${JOHNWEB_URL}/api/bot/grade \\
-  -H "Authorization: Bearer johnbot-YOUR_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"answerId": "ANSWER_ID", "isCorrect": true, "feedback": "Good job!"}'
-
-# Fetch papers (public)
-curl "${JOHNWEB_URL}/api/papers?grade=7"`}
-            </pre>
-          </div>
         </div>
       </section>
 
