@@ -965,6 +965,12 @@ app.post("/api/trade/offer", async (req, res) => {
         amount: 0, type: "trade_offer", at: Date.now(), ref: fromUid,
       },
     });
+    await notifyUser(toUid, {
+      type: "trade",
+      title: "New trade offer",
+      message: `${fromUser.displayName ?? "A classmate"} offered you ${fromItem.name} for ${priceCC} CC${reason ? ` — ${reason}` : ""}`,
+      link: "/trading",
+    });
     res.json({ ok: true, tradeId, priceCC, fromItem });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1022,6 +1028,12 @@ app.put("/api/trade/accept", async (req, res) => {
       [`walletItems/${trade.fromUid}/${trade.itemId}`]: null,
       [`walletItems/${trade.toUid}/${trade.itemId}`]: { itemId: trade.itemId, acquiredAt: Date.now() },
     });
+    await notifyUser(trade.fromUid, {
+      type: "trade",
+      title: "Offer accepted",
+      message: `${toUser.displayName ?? "A classmate"} accepted your ${MARKET_ITEMS[trade.itemId]?.name ?? "item"} offer for ${trade.priceCC} CC`,
+      link: "/trading",
+    });
     res.json({ ok: true, tradeId, priceCC: trade.priceCC, fromItem: MARKET_ITEMS[trade.itemId] });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1048,7 +1060,7 @@ app.put("/api/trade/decline", async (req, res) => {
 });
 
 // POST /api/trade/list  body: { uid, itemId, priceCC, reason? }
-// Create a marketplace listing (public, anyone can buy).
+// Create a marketplace listing (public, anyone can buy). 5% listing fee charged now.
 app.post("/api/trade/list", async (req, res) => {
   const { uid, itemId, priceCC, reason } = req.body ?? {};
   if (!uid || !itemId || !Number.isFinite(priceCC) || priceCC <= 0) {
@@ -1060,20 +1072,23 @@ app.post("/api/trade/list", async (req, res) => {
   if (item.kind === "confetti") return res.status(400).json({ error: "Confetti can't be listed — use Market instead" });
   try {
     const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
     if (!userSnap.exists()) return res.status(404).json({ error: "User not found" });
-    const price = Math.round(priceCC * 1.05);
+    const fee = Math.round(priceCC * 0.05);
+    if ((user.coins ?? 0) < fee) return res.status(400).json({ error: `Need ${fee} CC for the 5% listing fee` });
+    const price = Math.round(priceCC);
     const listingId = `list-${Date.now()}-${randomUUID().slice(0, 6)}`;
     await db.ref().update({
       [`tradeListings/${listingId}`]: {
-        sellerUid: uid, itemId, price, reason: reason ?? "",
+        sellerUid: uid, itemId, price, fee, reason: reason ?? "",
         createdAt: Date.now(), expiresAt: Date.now() + 30 * 86400000,
       },
-      [`walletItems/${uid}/${itemId}`]: { itemId, acquiredAt: Date.now() },
+      [`users/${uid}/coins`]: ServerValue.increment(-fee),
       [`coinsLedger/${uid}/${listingId}`]: {
-        amount: -price, type: "listing", at: Date.now(), ref: itemId,
+        amount: -fee, type: "listing_fee", at: Date.now(), ref: itemId,
       },
     });
-    res.json({ ok: true, listingId, price, item });
+    res.json({ ok: true, listingId, price, fee, item });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1103,35 +1118,83 @@ app.put("/api/trade/confirm", async (req, res) => {
   try {
     const listingSnap = await db.ref(`tradeListings/${listingId}`).once("value");
     const listing = listingSnap.val();
-    if (!listing || listing.sellerUid !== buyerUid) return res.status(400).json({ error: "Not this listing" });
-    const sellerSnap = await db.ref(`users/${listing.sellerUid}`).once("value");
-    const seller = sellerSnap.val();
-    if (!seller) return res.status(404).json({ error: "Seller not found" });
-    if (seller.coins < listing.price) return res.status(400).json({ error: "Not enough CC" });
-    const item = MARKET_ITEMS[listing.itemId];
+    if (!listing) return res.status(404).json({ error: "Listing not found" });
+    if (listing.status === "confirmed") return res.status(400).json({ error: "Listing already sold" });
+    if (listing.status === "cancelled") return res.status(400).json({ error: "Listing was cancelled" });
+    if ((listing.expiresAt ?? 0) < Date.now()) return res.status(400).json({ error: "Listing has expired" });
+    if (listing.sellerUid === buyerUid) return res.status(400).json({ error: "Can't buy your own listing" });
+    const seller = (await db.ref(`users/${listing.sellerUid}`).once("value")).val();
     const buyer = (await db.ref(`users/${buyerUid}`).once("value")).val();
+    if (!seller || !buyer) return res.status(404).json({ error: "User not found" });
+    if ((buyer.coins ?? 0) < listing.price) return res.status(400).json({ error: "Not enough CC" });
+    const item = MARKET_ITEMS[listing.itemId];
     const purchaseId = `pur-${Date.now()}-${randomUUID().slice(0, 6)}`;
     const updates = {
-      [`users/${listing.sellerUid}/coins`]: ServerValue.increment(-listing.price),
-      [`users/${buyerUid}/coins`]: ServerValue.increment(listing.price),
-      [`walletItems/${listing.sellerUid}/${listing.itemId}`]: { itemId: listing.itemId, acquiredAt: Date.now() },
+      [`users/${buyerUid}/coins`]: ServerValue.increment(-listing.price),
+      [`users/${listing.sellerUid}/coins`]: ServerValue.increment(listing.price),
+      [`walletItems/${listing.sellerUid}/${listing.itemId}`]: null,
       [`walletItems/${buyerUid}/${listing.itemId}`]: { itemId: listing.itemId, acquiredAt: Date.now() },
       [`coinsLedger/${listing.sellerUid}/${purchaseId}`]: {
-        amount: -listing.price, type: "listing_confirm", at: Date.now(), ref: listing.itemId,
-      },
-      [`coinsLedger/${buyerUid}/${purchaseId}`]: {
         amount: listing.price, type: "listing_confirm", at: Date.now(), ref: listing.itemId,
       },
-      [`tradeListings/${listingId}`]: {
-        status: "confirmed", confirmedAt: Date.now(), buyerUid
+      [`coinsLedger/${buyerUid}/${purchaseId}`]: {
+        amount: -listing.price, type: "listing_confirm", at: Date.now(), ref: listing.itemId,
       },
+      [`tradeListings/${listingId}/status`]: "confirmed",
+      [`tradeListings/${listingId}/confirmedAt`]: Date.now(),
+      [`tradeListings/${listingId}/buyerUid`]: buyerUid,
     };
     await db.ref().update(updates);
+    await notifyUser(listing.sellerUid, {
+      type: "trade",
+      title: "Item sold!",
+      message: `${buyer.displayName ?? "A classmate"} bought your ${item?.name ?? listing.itemId} for ${listing.price} CC`,
+      link: "/trading",
+    });
     res.json({ ok: true, listingId, price: listing.price, item });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+// GET /api/trade/admin/listings — all listings + offers (admin)
+app.get("/api/trade/admin/listings", requireAdmin, async (_req, res) => {
+  try {
+    const [listSnap, offerSnap] = await Promise.all([
+      db.ref("tradeListings").once("value"),
+      db.ref("tradeOffers").once("value"),
+    ]);
+    const listings = Object.entries(listSnap.val() ?? {}).map(([listingId, l]) => ({ listingId, ...l }));
+    const offers = Object.entries(offerSnap.val() ?? {}).map(([tradeId, t]) => ({ tradeId, ...t }));
+    res.json({ listings, offers });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/trade/admin/cancel  body: { listingId } — cancel a listing + refund fee (admin)
+app.put("/api/trade/admin/cancel", requireAdmin, async (req, res) => {
+  const { listingId } = req.body ?? {};
+  if (!listingId) return res.status(400).json({ error: "Need listingId" });
+  try {
+    const snap = await db.ref(`tradeListings/${listingId}`).once("value");
+    const listing = snap.val();
+    if (!listing) return res.status(404).json({ error: "Listing not found" });
+    if (listing.status === "confirmed") return res.status(400).json({ error: "Already sold" });
+    if (listing.status === "cancelled") return res.status(400).json({ error: "Already cancelled" });
+    await db.ref().update({
+      [`tradeListings/${listingId}/status`]: "cancelled",
+      [`tradeListings/${listingId}/cancelledAt`]: Date.now(),
+      [`users/${listing.sellerUid}/coins`]: ServerValue.increment(listing.fee ?? 0),
+      [`coinsLedger/${listing.sellerUid}/${listingId}`]: {
+        amount: listing.fee ?? 0, type: "listing_fee_refund", at: Date.now(), ref: listingId,
+      },
+    });
+    res.json({ ok: true, listingId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/card", async (req, res) => {
   const uid = String(req.query.uid ?? "");
   if (!uid) return res.status(400).json({ error: "Need uid" });

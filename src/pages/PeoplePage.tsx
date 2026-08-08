@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Gift, Users } from "lucide-react";
+import { Gift, Handshake, Users } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import Spinner from "../components/Spinner";
 import Avatar from "../components/Avatar";
@@ -160,7 +160,14 @@ export default function PeoplePage() {
                   </div>
                 </Link>
                 {!isMe && user && (
-                  <div className="shrink-0 text-right">
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Link
+                      to={`/trading?offerTo=${person.uid}&tab=send`}
+                      title={`Offer ${person.displayName} an item`}
+                      className="flex items-center gap-1 rounded-lg bg-emerald-100 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                    >
+                      <Handshake className="h-3.5 w-3.5" /> Offer
+                    </Link>
                     {giftFor === person.uid ? (
                       <div className="flex items-center gap-1.5">
                         <input

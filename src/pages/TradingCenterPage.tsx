@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Coins, Globe, ListChecks, Plus, Send, Tag } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
@@ -21,7 +21,8 @@ interface Person {
 export default function TradingCenterPage() {
   const { user, appUser } = useAuth();
   const { showToast, toast } = useToast();
-  const [tab, setTab] = useState<Tab>("browse");
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => (searchParams.get("tab") as Tab) || "browse");
   const [listings, setListings] = useState<TradeListing[] | null>(null);
   const [wallet, setWallet] = useState<Record<string, WalletItem> | null>(null);
   const [myListings, setMyListings] = useState<TradeListing[] | null>(null);
@@ -33,7 +34,7 @@ export default function TradingCenterPage() {
   const [createPrice, setCreatePrice] = useState("");
   const [createReason, setCreateReason] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
-  const [sendToUid, setSendToUid] = useState("");
+  const [sendToUid, setSendToUid] = useState(() => searchParams.get("offerTo") ?? "");
   const [sendItemId, setSendItemId] = useState("");
   const [sendPrice, setSendPrice] = useState("");
   const [sendReason, setSendReason] = useState("");
@@ -52,8 +53,10 @@ export default function TradingCenterPage() {
     const unsubscribeListings = onValue(ref(db, `tradeListings`), (snapshot) => {
       const val = snapshot.val() ?? {};
       const all: TradeListing[] = Object.values(val);
-      setListings(all.filter((l) => !l.status || l.status === "active"));
-      setMyListings(all.filter((l) => l.sellerUid === user.uid && (!l.status || l.status === "active")));
+      const active = (l: TradeListing) =>
+        (!l.status || l.status === "active") && (l.expiresAt ?? 0) > Date.now();
+      setListings(all.filter(active));
+      setMyListings(all.filter((l) => l.sellerUid === user.uid && active(l)));
     });
     return () => {
       unsubscribeWallet();
@@ -565,7 +568,9 @@ export default function TradingCenterPage() {
         listings.filter((l) => !l.status || l.status === "active").length === 0 &&
         (myListings ?? []).length === 0 && (
           <div className="card mt-6 p-12 text-center text-slate-500 dark:text-slate-400">
-            {tab === "browse" ? "No listings yet — list your first cosmetic in the Create tab!" : "You have no active listings."}
+            {tab === "browse"
+              ? "No listings yet — list your first cosmetic in the Create tab!"
+              : "You have no active listings."}
           </div>
         )}
     </div>

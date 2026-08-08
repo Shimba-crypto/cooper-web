@@ -13,6 +13,7 @@ import {
   FileText,
   Flag,
   Gift,
+  Handshake,
   LayoutDashboard,
   Megaphone,
   MessageCircle,
@@ -61,7 +62,7 @@ import type {
   PaymentRecord,
 } from "../types";
 
-type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "codes" | "payments" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "market" | "johnweb";
+type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "codes" | "payments" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "market" | "johnweb" | "trading";
 
 const PAPER_TYPES: PaperType[] = ["Paper 1", "Paper 2", "Practical"];
 const SUBJECTS = [
@@ -134,6 +135,7 @@ export default function AdminDashboardPage() {
     { id: "broadcast", label: "Broadcast", icon: Send },
     { id: "import", label: "Import", icon: Upload },
     { id: "market", label: "Market", icon: Store },
+    { id: "trading", label: "Trading", icon: Handshake },
     { id: "johnweb", label: "John Web", icon: ExternalLink },
   ];
 
@@ -182,6 +184,7 @@ export default function AdminDashboardPage() {
         {tab === "broadcast" && <BroadcastTab />}
         {tab === "import" && <ImportTab />}
         {tab === "market" && <MarketTab />}
+        {tab === "trading" && <TradingTab />}
         {tab === "johnweb" && <JohnWebTab />}
       </div>
     </div>
@@ -2213,6 +2216,239 @@ function JohnWebTab() {
         <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">
           Site URL: {JOHNWEB_URL} · Merchant: +260 {PAYMENT_MERCHANT_NUMBER.slice(1, 3)} {PAYMENT_MERCHANT_NUMBER.slice(3, 6)} {PAYMENT_MERCHANT_NUMBER.slice(6)}
         </p>
+      </div>
+    </div>
+  );
+}
+
+interface AdminListing {
+  listingId: string;
+  sellerUid: string;
+  itemId: string;
+  price: number;
+  fee?: number;
+  reason?: string;
+  createdAt?: number;
+  expiresAt?: number;
+  status?: string;
+  buyerUid?: string;
+  confirmedAt?: number;
+  cancelledAt?: number;
+}
+
+interface AdminTradeOffer {
+  tradeId: string;
+  fromUid: string;
+  toUid: string;
+  itemId: string;
+  priceCC: number;
+  reason?: string;
+  status: string;
+  createdAt?: number;
+}
+
+function TradingTab() {
+  const { showToast, toast } = useToast();
+  const apiKey = localStorage.getItem("cooperweb:admin-api-key") ?? "";
+  const [data, setData] = useState<{ listings: AdminListing[]; offers: AdminTradeOffer[] } | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (!apiKey) return;
+      try {
+        const res = await fetch(`${API_URL}/api/trade/admin/listings`, {
+          headers: { "x-api-key": apiKey },
+        });
+        const json = await res.json();
+        if (!cancelled && res.ok) setData(json ?? { listings: [], offers: [] });
+        else if (!cancelled) setMessage(json?.error ?? "Failed to load trades");
+      } catch {
+        /* transient */
+      }
+    };
+    load();
+    const interval = setInterval(load, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [apiKey]);
+
+  useEffect(() => {
+    const unsub = onValue(ref(db, "users"), (snapshot) => {
+      const users = snapshot.val() ?? {};
+      const names: Record<string, string> = {};
+      for (const [uid, u] of Object.entries(users)) {
+        names[uid] = (u as { displayName?: string }).displayName ?? uid.slice(0, 8);
+      }
+      setUserNames(names);
+    });
+    return unsub;
+  }, []);
+
+  const cancelListing = async (listingId: string) => {
+    if (!apiKey) {
+      setMessage("Set your API key in the Broadcast tab first.");
+      return;
+    }
+    setBusyId(listingId);
+    try {
+      const res = await fetch(`${API_URL}/api/trade/admin/cancel`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify({ listingId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? `API ${res.status}`);
+      showToast("Listing cancelled, fee refunded.");
+      setMessage(null);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const listings = data?.listings ?? [];
+  const offers = data?.offers ?? [];
+
+  return (
+    <div className="space-y-6">
+      {toast}
+      <div className="card p-6">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Marketplace listings</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Active, sold and cancelled listings. Cancelling refunds the listing fee to the seller.
+        </p>
+        {message && (
+          <p className="mt-2 text-sm font-semibold text-rose-600 dark:text-rose-400">{message}</p>
+        )}
+        {!apiKey && (
+          <p className="mt-2 text-sm font-semibold text-amber-600 dark:text-amber-400">
+            Enter your admin API key in the Broadcast tab to view and cancel trades.
+          </p>
+        )}
+        {listings.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No listings yet.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                  <th className="px-3 py-2">Item</th>
+                  <th className="px-3 py-2">Seller</th>
+                  <th className="px-3 py-2">Price</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Expires</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {listings.map((l) => {
+                  const expired = (l.expiresAt ?? 0) < Date.now() && l.status !== "confirmed";
+                  return (
+                    <tr key={l.listingId} className="border-b border-slate-100 dark:border-slate-800">
+                      <td className="px-3 py-2 font-medium text-slate-800 dark:text-slate-200">
+                        {marketItemById(l.itemId)?.name ?? l.itemId}
+                        {l.reason && <span className="block text-xs text-slate-400">{l.reason}</span>}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
+                        {userNames[l.sellerUid] ?? l.sellerUid.slice(0, 8)}
+                      </td>
+                      <td className="px-3 py-2 font-semibold text-amber-600 dark:text-amber-400">
+                        {l.price} CC
+                        {l.fee ? <span className="block text-xs text-slate-400">fee {l.fee}</span> : null}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            expired
+                              ? "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                              : l.status === "confirmed"
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+                              : l.status === "cancelled"
+                              ? "bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                          }`}
+                        >
+                          {expired ? "expired" : (l.status ?? "active")}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-slate-500 dark:text-slate-400">
+                        {l.expiresAt ? new Date(l.expiresAt).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {!l.status || l.status === "active" ? (
+                          <button
+                            onClick={() => cancelListing(l.listingId)}
+                            disabled={busyId === l.listingId}
+                            className="rounded-lg bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-200 disabled:opacity-60 dark:bg-rose-950/50 dark:text-rose-400"
+                          >
+                            {busyId === l.listingId ? "…" : "Cancel"}
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="card p-6">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Direct trade offers</h2>
+        {offers.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No trade offers yet.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                  <th className="px-3 py-2">Item</th>
+                  <th className="px-3 py-2">Seller</th>
+                  <th className="px-3 py-2">Buyer</th>
+                  <th className="px-3 py-2">Price</th>
+                  <th className="px-3 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {offers.map((o) => (
+                  <tr key={o.tradeId} className="border-b border-slate-100 dark:border-slate-800">
+                    <td className="px-3 py-2 font-medium text-slate-800 dark:text-slate-200">
+                      {marketItemById(o.itemId)?.name ?? o.itemId}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
+                      {userNames[o.fromUid] ?? o.fromUid.slice(0, 8)}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
+                      {userNames[o.toUid] ?? o.toUid.slice(0, 8)}
+                    </td>
+                    <td className="px-3 py-2 font-semibold text-amber-600 dark:text-amber-400">{o.priceCC} CC</td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          o.status === "accepted"
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400"
+                            : o.status === "declined"
+                            ? "bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                        }`}
+                      >
+                        {o.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
