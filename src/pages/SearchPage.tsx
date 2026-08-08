@@ -83,7 +83,7 @@ export default function SearchPage() {
       if (!question.paperId) return;
       results.push({
         id: question.id,
-        title: `${question.paperTitle} — Q${question.questionNumber}: ${question.text}`,
+        title: `${question.paperTitle ? `${question.paperTitle} — ` : ""}Q${question.questionNumber}: ${question.text}`,
         subject: "John Web",
         type: "jw-question",
         link: `/paper/${question.paperId}`,
