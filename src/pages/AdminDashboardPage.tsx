@@ -2704,11 +2704,16 @@ function MarketTab() {
   const adjustCoins = async (e: FormEvent) => {
     e.preventDefault();
     if (!coinTarget) return;
+    const apiKey = localStorage.getItem("cooperweb:admin-api-key") ?? "";
+    if (!apiKey) {
+      showToast("Set your API key in the Broadcast tab first.");
+      return;
+    }
     setCoinBusy(true);
     try {
       const res = await fetch(`${API_URL}/api/admin/coins`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
         body: JSON.stringify({ uid: coinTarget, amount: Number(coinAmount), reason: coinReason }),
       });
       const data = await res.json();
