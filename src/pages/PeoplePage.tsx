@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Gift, Handshake, Users } from "lucide-react";
+import { Gift, Handshake, Lock, Users } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { hasInteractiveAccess } from "../utils/plans";
 import Spinner from "../components/Spinner";
 import Avatar from "../components/Avatar";
 import { useToast } from "../components/Toast";
@@ -24,8 +25,9 @@ interface Person {
 }
 
 export default function PeoplePage() {
-  const { user, appUser } = useAuth();
+  const { user, appUser, planId } = useAuth();
   const { showToast, toast } = useToast();
+  const interactive = hasInteractiveAccess(planId);
   const [people, setPeople] = useState<Person[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -161,46 +163,58 @@ export default function PeoplePage() {
                 </Link>
                 {!isMe && user && (
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <Link
-                      to={`/trading?offerTo=${person.uid}&tab=send`}
-                      title={`Offer ${person.displayName} an item`}
-                      className="flex items-center gap-1 rounded-lg bg-emerald-100 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:hover:bg-emerald-950"
-                    >
-                      <Handshake className="h-3.5 w-3.5" /> Offer
-                    </Link>
-                    {giftFor === person.uid ? (
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          min={1}
-                          max={50}
-                          value={giftAmount}
-                          onChange={(e) => setGiftAmount(e.target.value)}
-                          className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                        />
-                        <button
-                          onClick={() => sendGift(person)}
-                          disabled={gifting}
-                          className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                    {interactive ? (
+                      <>
+                        <Link
+                          to={`/trading?offerTo=${person.uid}&tab=send`}
+                          title={`Offer ${person.displayName} an item`}
+                          className="flex items-center gap-1 rounded-lg bg-emerald-100 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-400 dark:hover:bg-emerald-950"
                         >
-                          {gifting ? "…" : "Send"}
-                        </button>
-                        <button
-                          onClick={() => setGiftFor(null)}
-                          className="rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                        >
-                          Cancel
-                        </button>
-                      </div>
+                          <Handshake className="h-3.5 w-3.5" /> Offer
+                        </Link>
+                        {giftFor === person.uid ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={1}
+                              max={50}
+                              value={giftAmount}
+                              onChange={(e) => setGiftAmount(e.target.value)}
+                              className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            />
+                            <button
+                              onClick={() => sendGift(person)}
+                              disabled={gifting}
+                              className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                            >
+                              {gifting ? "…" : "Send"}
+                            </button>
+                            <button
+                              onClick={() => setGiftFor(null)}
+                              className="rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setGiftFor(person.uid)}
+                            disabled={(appUser?.coins ?? 0) < 1}
+                            title={person.coins !== undefined ? `Gift CooperCoins (they have ${person.coins} CC)` : "Gift CooperCoins"}
+                            className="flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-200 disabled:opacity-50 dark:bg-amber-950/50 dark:text-amber-400 dark:hover:bg-amber-950"
+                          >
+                            <Gift className="h-3.5 w-3.5" /> Gift
+                          </button>
+                        )}
+                      </>
                     ) : (
-                      <button
-                        onClick={() => setGiftFor(person.uid)}
-                        disabled={(appUser?.coins ?? 0) < 1}
-                        title={person.coins !== undefined ? `Gift CooperCoins (they have ${person.coins} CC)` : "Gift CooperCoins"}
-                        className="flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-200 disabled:opacity-50 dark:bg-amber-950/50 dark:text-amber-400 dark:hover:bg-amber-950"
+                      <Link
+                        to="/payments"
+                        title="Student plan unlocks gifting and trading"
+                        className="flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400"
                       >
-                        <Gift className="h-3.5 w-3.5" /> Gift
-                      </button>
+                        <Lock className="h-3.5 w-3.5" /> Upgrade to gift & trade
+                      </Link>
                     )}
                   </div>
                 )}

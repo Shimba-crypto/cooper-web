@@ -5,6 +5,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { onValue, ref, set } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
+import { hasInteractiveAccess } from "../utils/plans";
+import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/Toast";
 import { CHIP_CLASSES, DESIGN_GRADIENTS, PATTERN_CLASSES } from "../data/market";
@@ -77,7 +79,7 @@ function levelFor(coinsEarned: number): number {
 }
 
 export default function CardPage() {
-  const { user, appUser } = useAuth();
+  const { user, appUser, planId } = useAuth();
   const { showToast, toast } = useToast();
   const [card, setCard] = useState<DigitalCard | null | undefined>(undefined);
   const [ownedItems, setOwnedItems] = useState<Record<string, WalletItem> | null>(null);
@@ -130,6 +132,15 @@ export default function CardPage() {
           </Link>
         </div>
       </div>
+    );
+  }
+
+  if (!hasInteractiveAccess(planId)) {
+    return (
+      <UpgradeGate
+        title="Your CooperCard is a Student plan feature"
+        message="Your card levels up with the CooperCoins you earn from quizzes. Upgrade to unlock your card."
+      />
     );
   }
 

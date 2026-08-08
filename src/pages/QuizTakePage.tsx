@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Award, CheckCircle2, ListChecks, Lock, Play, Share2, XCircle } from "lucide-react";
+import { ArrowLeft, Award, CheckCircle2, Eye, ListChecks, Lock, Play, Share2, XCircle } from "lucide-react";
 import { ref, runTransaction, set } from "firebase/database";
 import { db } from "../firebase";
 import { useQuizzes } from "../hooks/useQuizzes";
@@ -10,6 +10,7 @@ import { TIMER_CLASSES } from "../data/market";
 import { API_URL } from "../config";
 import type { Quiz } from "../types";
 import { canAccessPremiumQuiz } from "../utils/redeem";
+import { hasInteractiveAccess } from "../utils/plans";
 import RedeemCard from "../components/RedeemCard";
 import Spinner from "../components/Spinner";
 import { useConfirmDialog } from "../components/ConfirmDialog";
@@ -36,6 +37,7 @@ export default function QuizTakePage() {
   const offlineQuiz = isGenerated ? undefined : getQuizOffline(id ?? "");
   const quiz = stateQuiz ?? quizzes.find((q) => q.id === id) ?? offlineQuiz;
   const isOffline = offlineQuiz != null && !quizzes.some((q) => q.id === id);
+  const interactive = hasInteractiveAccess(planId) || (user != null && isOffline);
 
   const { askConfirm, dialog: confirmDialog } = useConfirmDialog();
   const { showToast, toast } = useToast();
@@ -57,7 +59,7 @@ export default function QuizTakePage() {
   }, [quiz]);
 
   useEffect(() => {
-    if (phase !== "taking") return;
+    if (phase !== "taking" || !interactive) return;
     const interval = setInterval(() => {
       setSecondsLeft((s) => {
         if (s <= 1) {
@@ -73,7 +75,7 @@ export default function QuizTakePage() {
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [phase, quiz]);
+  }, [phase, quiz, interactive]);
 
   const submitAnswers = async () => {
     if (!quiz) return;
@@ -216,23 +218,39 @@ export default function QuizTakePage() {
               ⏱ {quiz.durationMinutes} minutes
             </span>
           </div>
-          <>
-            <p className="mx-auto mt-6 max-w-md text-sm text-slate-500 dark:text-slate-400">
-              {user
-                ? "Your score will be saved and added to the leaderboard."
-                : "Log in to save your score and earn leaderboard points."}
-            </p>
-            <button onClick={() => setPhase("taking")} className="btn-primary mt-6 !px-8 !py-3">
-              <Play className="h-5 w-5" /> Start quiz
-            </button>
-            {!user && (
+          {interactive ? (
+            <>
+              <p className="mx-auto mt-6 max-w-md text-sm text-slate-500 dark:text-slate-400">
+                {user
+                  ? "Your score will be saved and added to the leaderboard."
+                  : "Log in to save your score and earn leaderboard points."}
+              </p>
+              <button onClick={() => setPhase("taking")} className="btn-primary mt-6 !px-8 !py-3">
+                <Play className="h-5 w-5" /> Start quiz
+              </button>
+              {!user && (
+                <p className="mt-4 text-sm">
+                  <Link to={`/login?next=/quiz/${quiz.id}`} className="font-semibold text-emerald-600 hover:underline">
+                    Log in to save your score
+                  </Link>
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="mx-auto mt-6 max-w-md text-sm text-slate-500 dark:text-slate-400">
+                Preview mode — you can look at the questions, but taking quizzes is a Student plan feature.
+              </p>
+              <button onClick={() => setPhase("taking")} className="btn-primary mt-6 !px-8 !py-3">
+                <Eye className="h-5 w-5" /> Preview questions
+              </button>
               <p className="mt-4 text-sm">
-                <Link to={`/login?next=/quiz/${quiz.id}`} className="font-semibold text-emerald-600 hover:underline">
-                  Log in to save your score
+                <Link to="/payments" className="font-semibold text-emerald-600 hover:underline">
+                  Upgrade to Student (K50) to take this quiz
                 </Link>
               </p>
-            )}
-          </>
+            </>
+          )}
         </div>
       </div>
       </>
@@ -386,7 +404,7 @@ export default function QuizTakePage() {
         className="mt-4 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          manualSubmit();
+          if (interactive) manualSubmit();
         }}
       >
         {quiz.questions.map((question, qi) => (
@@ -399,16 +417,21 @@ export default function QuizTakePage() {
               {question.options.map((option, oi) => (
                 <label
                   key={oi}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition ${
-                    answers[qi] === oi
-                      ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
-                      : "border-slate-200 hover:border-emerald-300 dark:border-slate-800"
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition ${
+                    interactive
+                      ? `cursor-pointer ${
+                          answers[qi] === oi
+                            ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950"
+                            : "border-slate-200 hover:border-emerald-300 dark:border-slate-800"
+                        }`
+                      : "border-slate-200 dark:border-slate-800"
                   }`}
                 >
                   <input
                     type="radio"
                     name={`question-${qi}`}
                     checked={answers[qi] === oi}
+                    disabled={!interactive}
                     onChange={() =>
                       setAnswers((prev) => {
                         const next = [...prev];
@@ -427,9 +450,24 @@ export default function QuizTakePage() {
           </fieldset>
         ))}
 
-        <button type="submit" disabled={saving} className="btn-primary w-full !py-3 disabled:opacity-60">
-          {saving ? "Saving…" : "Submit quiz"}
-        </button>
+        {interactive ? (
+          <button type="submit" disabled={saving} className="btn-primary w-full !py-3 disabled:opacity-60">
+            {saving ? "Saving…" : "Submit quiz"}
+          </button>
+        ) : (
+          <div className="card p-6 text-center">
+            <Lock className="mx-auto h-8 w-8 text-amber-500" />
+            <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+              This is a read-only preview.
+            </p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Upgrade to the Student plan (K50) to answer questions, save results and earn CooperCoins.
+            </p>
+            <Link to="/payments" className="btn-primary mt-4 inline-block">
+              Upgrade to Student (K50)
+            </Link>
+          </div>
+        )}
       </form>
       </div>
     </>

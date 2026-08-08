@@ -58,7 +58,7 @@ export default function PaymentsPage() {
         const res = await fetch(`${API_URL}/api/payments/dpo-verify?paymentId=${encodeURIComponent(dpoPayment)}`);
         const data = await res.json();
         if (!cancelled && data?.status === "confirmed") {
-          setDpoMsg("Payment confirmed! Your Teacher Full plan is now active.");
+          setDpoMsg("Payment confirmed! Your new plan is now active.");
         } else if (!cancelled && data?.status === "requested") {
           setDpoMsg("Payment still processing — we'll activate your plan the moment DPO confirms it.");
         }

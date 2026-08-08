@@ -4,11 +4,13 @@ import { Printer } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
+import { hasInteractiveAccess } from "../utils/plans";
+import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import type { QuizResult } from "../types";
 
 export default function ProgressReportPage() {
-  const { user, appUser } = useAuth();
+  const { user, planId, appUser } = useAuth();
   const [results, setResults] = useState<Record<string, Record<string, QuizResult>> | null>(null);
 
   useEffect(() => {
@@ -37,6 +39,10 @@ export default function ProgressReportPage() {
         <Link to="/login?next=/progress-report" className="btn-primary mt-6">Log in</Link>
       </div>
     );
+  }
+
+  if (!hasInteractiveAccess(planId)) {
+    return <UpgradeGate title="Progress reports are a Student plan feature" />;
   }
 
   if (!stats) return <Spinner label="Preparing report…" />;

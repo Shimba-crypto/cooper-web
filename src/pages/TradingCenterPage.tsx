@@ -4,6 +4,8 @@ import { Coins, Globe, ListChecks, Plus, Send, Tag } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
+import { hasInteractiveAccess } from "../utils/plans";
+import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/Toast";
 import { ICONS, marketItemById } from "../data/market";
@@ -19,7 +21,7 @@ interface Person {
 }
 
 export default function TradingCenterPage() {
-  const { user, appUser } = useAuth();
+  const { user, appUser, planId } = useAuth();
   const { showToast, toast } = useToast();
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>(() => (searchParams.get("tab") as Tab) || "browse");
@@ -222,6 +224,15 @@ export default function TradingCenterPage() {
           <Link to="/login" className="btn-primary mt-6 inline-block">Log in</Link>
         </div>
       </div>
+    );
+  }
+
+  if (!hasInteractiveAccess(planId)) {
+    return (
+      <UpgradeGate
+        title="Trading is a Student plan feature"
+        message="List your cosmetics, send item offers and buy from classmates — upgrade to join the Trading Post."
+      />
     );
   }
 

@@ -72,7 +72,7 @@ const MOMO = {
   callbackUrl: process.env.MTN_MOMO_CALLBACK_URL ?? "",
 };
 const MOMO_ENABLED = !!(MOMO.subscriptionKey && MOMO.userId && MOMO.userKey);
-const PLAN_PRICES = { teacher_full: 200 };
+const PLAN_PRICES = { student: 50, teacher_full: 200 };
 
 const COINS_PER_CORRECT = 1;
 const STREAK_BONUS_PER_DAY = 2;
@@ -702,9 +702,11 @@ app.post("/api/redeem", async (req, res) => {
     });
 
     if (data.type === "gift" || data.type === "promo") {
+      const planName =
+        data.planId === "teacher_full" ? "Teacher Full" : data.planId === "student" ? "Student" : "Premium";
       return res.json({
         ok: true,
-        message: `Plan activated! ${data.planId === "teacher_full" ? "Teacher Full" : "Premium"} is now yours.`,
+        message: `Plan activated! ${planName} is now yours.`,
       });
     }
     if (data.type === "discount") {

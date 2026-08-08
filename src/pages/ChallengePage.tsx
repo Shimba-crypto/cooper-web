@@ -6,6 +6,8 @@ import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { useQuizzes } from "../hooks/useQuizzes";
 import { canAccessPremiumQuiz } from "../utils/redeem";
+import { hasInteractiveAccess } from "../utils/plans";
+import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import type { Challenge, ChallengePlayer } from "../types";
 
@@ -82,6 +84,15 @@ export default function ChallengePage() {
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Log in required</h1>
         <Link to={`/login?next=${cid ? `/challenge/${cid}` : "/challenge"}`} className="btn-primary mt-6">Log in</Link>
       </div>
+    );
+  }
+
+  if (!hasInteractiveAccess(planId)) {
+    return (
+      <UpgradeGate
+        title="Challenges are a Student plan feature"
+        message="Race friends on live quiz challenges and climb the scoreboard — upgrade to join."
+      />
     );
   }
 

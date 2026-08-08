@@ -4,6 +4,8 @@ import { BadgePercent, Coins, Lock, ShoppingBag, Sparkles } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
+import { hasInteractiveAccess } from "../utils/plans";
+import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import RedeemCard from "../components/RedeemCard";
 import { useToast } from "../components/Toast";
@@ -40,7 +42,7 @@ const SECTIONS: { key: string; title: string }[] = [
 ];
 
 export default function MarketPage() {
-  const { user, appUser } = useAuth();
+  const { user, appUser, planId } = useAuth();
   const { showToast, toast } = useToast();
   const [owned, setOwned] = useState<Record<string, WalletItem> | null>(null);
   const [serverItems, setServerItems] = useState<Record<string, ServerItem> | null>(null);
@@ -51,7 +53,7 @@ export default function MarketPage() {
   const [pinError, setPinError] = useState<string | null>(null);
 
   const balance = appUser?.coins ?? 0;
-  const unlocked = appUser?.marketAccess === true;
+  const unlocked = appUser?.marketAccess === true || hasInteractiveAccess(planId);
 
   useEffect(() => {
     if (!user) return;
@@ -158,6 +160,15 @@ export default function MarketPage() {
           </Link>
         </div>
       </div>
+    );
+  }
+
+  if (!hasInteractiveAccess(planId)) {
+    return (
+      <UpgradeGate
+        title="The Market is a Student plan feature"
+        message="Earn CooperCoins from quizzes and spend them on frames, styles, badges and boosts — upgrade to get in."
+      />
     );
   }
 

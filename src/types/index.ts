@@ -33,7 +33,7 @@ export interface Quiz {
 }
 
 export type UserRole = "user" | "admin";
-export type PlanId = "admin" | "free" | "student_plus" | "teacher_plus" | "teacher_full";
+export type PlanId = "admin" | "free" | "student" | "student_plus" | "teacher_plus" | "teacher_full";
 
 export interface UserPlan {
   id: PlanId;

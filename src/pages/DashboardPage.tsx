@@ -6,9 +6,10 @@ import { db } from "../firebase";
 import { usePapers } from "../hooks/usePapers";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useAuth } from "../context/AuthContext";
-import { planName } from "../utils/plans";
+import { hasInteractiveAccess, planName } from "../utils/plans";
 import PlanBadge from "../components/PlanBadge";
 import RedeemCard from "../components/RedeemCard";
+import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import type { QuizResult } from "../types";
 
@@ -33,6 +34,15 @@ export default function DashboardPage() {
   }, [user]);
 
   if (loading) return <Spinner label="Loading dashboard…" />;
+
+  if (!hasInteractiveAccess(planId)) {
+    return (
+      <UpgradeGate
+        title="Dashboard is a Student plan feature"
+        message="Your dashboard tracks your quizzes, bookmarks and ratings. Browse papers and quizzes freely — upgrade to unlock your dashboard."
+      />
+    );
+  }
 
   const viewedPapers = viewed.map((id) => papers.find((p) => p.id === id)).filter(Boolean);
   const ratingValues = Object.values(ratings);

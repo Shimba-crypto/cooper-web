@@ -4,6 +4,8 @@ import { Award, BookOpen, CheckCircle2, Flame, Target, Trophy } from "lucide-rea
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
+import { hasInteractiveAccess } from "../utils/plans";
+import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import type { QuizResult } from "../types";
 
@@ -16,7 +18,7 @@ interface Stat {
 }
 
 export default function ProgressPage() {
-  const { user } = useAuth();
+  const { user, planId } = useAuth();
   const [results, setResults] = useState<Record<string, Record<string, QuizResult>> | null>(null);
 
   useEffect(() => {
@@ -34,6 +36,10 @@ export default function ProgressPage() {
         <Link to="/login?next=/progress" className="btn-primary mt-6">Log in</Link>
       </div>
     );
+  }
+
+  if (!hasInteractiveAccess(planId)) {
+    return <UpgradeGate title="Progress tracking is a Student plan feature" />;
   }
 
   if (!results) return <Spinner label="Loading your progress…" />;
