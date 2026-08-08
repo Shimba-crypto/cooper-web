@@ -57,6 +57,7 @@ const linkItems: { to: string; label: string; icon: LucideIcon; end?: boolean; g
   { to: "/trading", label: "Trading Post", icon: Handshake, gated: true },
   { to: "/payments", label: "Payments", icon: Wallet },
   { to: "/john-web", label: "John Web", icon: ExternalLink },
+  { to: "/api-docs", label: "API Docs", icon: FileText },
   { to: "/create-quiz", label: "Create Quiz", icon: Plus },
   { to: "/search", label: "Search", icon: Search },
 ];

@@ -31,6 +31,7 @@ import ChallengePage from "./pages/ChallengePage";
 import ProgressReportPage from "./pages/ProgressReportPage";
 import PaymentsPage from "./pages/PaymentsPage";
 import JohnWebPage from "./pages/JohnWebPage";
+import ApiDocsPage from "./pages/ApiDocsPage";
 import PeoplePage from "./pages/PeoplePage";
 import MarketPage from "./pages/MarketPage";
 import CardPage from "./pages/CardPage";
@@ -93,6 +94,7 @@ export default function App() {
               <Route path="/progress-report" element={<ProgressReportPage />} />
               <Route path="/payments" element={<PaymentsPage />} />
               <Route path="/john-web" element={<JohnWebPage />} />
+              <Route path="/api-docs" element={<ApiDocsPage />} />
               <Route path="/people" element={<PeoplePage />} />
               <Route path="/market" element={<MarketPage />} />
               <Route path="/card" element={<CardPage />} />
