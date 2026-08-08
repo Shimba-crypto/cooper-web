@@ -204,6 +204,14 @@
         ".read": "auth != null && (auth.uid === $uid || root.child('users/' + auth.uid + '/role').val() === 'admin')",
         ".write": false
       }
+    },
+    "tradeListings": {
+      ".read": true,
+      ".write": false
+    },
+    "tradeOffers": {
+      ".read": true,
+      ".write": false
     }
   }
 }
