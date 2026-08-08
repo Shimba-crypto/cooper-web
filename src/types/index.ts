@@ -117,6 +117,32 @@ export interface Announcement {
   active: boolean;
 }
 
+export interface TradeListing {
+  listingId: string;
+  sellerUid: string;
+  itemId: string;
+  price: number;
+  reason: string;
+  createdAt: number;
+  expiresAt: number;
+  status?: "active" | "confirmed";
+  buyerUid?: string;
+  confirmedAt?: number;
+}
+
+export interface TradeOffer {
+  tradeId: string;
+  fromUid: string;
+  toUid: string;
+  itemId: string;
+  priceCC: number;
+  reason: string;
+  status: "pending" | "accepted" | "declined";
+  createdAt: number;
+  acceptedAt?: number;
+  declinedAt?: number;
+}
+
 export type GroupRole = "teacher" | "student";
 
 export interface Group {

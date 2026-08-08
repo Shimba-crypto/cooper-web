@@ -24,6 +24,7 @@ import {
   Users,
   Wallet,
   X,
+  Handshake,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import PlanBadge from "./PlanBadge";
@@ -51,6 +52,7 @@ const linkItems = [
   { to: "/referrals", label: "Refer & Earn", icon: Gift },
   { to: "/market", label: "Market", icon: Store },
   { to: "/card", label: "My Card", icon: CreditCard },
+  { to: "/trading", label: "Trading Post", icon: Handshake },
   { to: "/payments", label: "Payments", icon: Wallet },
   { to: "/john-web", label: "John Web", icon: ExternalLink },
   { to: "/create-quiz", label: "Create Quiz", icon: Plus },

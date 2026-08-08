@@ -34,6 +34,7 @@ import JohnWebPage from "./pages/JohnWebPage";
 import PeoplePage from "./pages/PeoplePage";
 import MarketPage from "./pages/MarketPage";
 import CardPage from "./pages/CardPage";
+import TradingCenterPage from "./pages/TradingCenterPage";
 import { useTheme } from "./hooks/useTheme";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { usePageAnalytics } from "./hooks/usePageAnalytics";
@@ -95,6 +96,7 @@ export default function App() {
               <Route path="/people" element={<PeoplePage />} />
               <Route path="/market" element={<MarketPage />} />
               <Route path="/card" element={<CardPage />} />
+              <Route path="/trading" element={<TradingCenterPage />} />
               <Route path="*" element={<HomePage />} />
             </Routes>
           </main>

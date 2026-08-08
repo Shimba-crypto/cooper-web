@@ -971,8 +971,8 @@ app.post("/api/trade/offer", async (req, res) => {
   }
 });
 
-// GET /api/trade/accepted  body: { uid } — list trades the user is involved in
-app.get("/api/trade/accepted", async (req, res) => {
+// POST /api/trade/accepted  body: { uid } — list trades the user is involved in
+app.post("/api/trade/accepted", async (req, res) => {
   const { uid } = req.body ?? {};
   if (!uid) return res.status(400).json({ error: "Need uid" });
   try {
