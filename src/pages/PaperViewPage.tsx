@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { ArrowLeft, BookMarked, CheckCircle2, Download, ExternalLink, HelpCircle, Lock } from "lucide-react";
 import { usePapers } from "../hooks/usePapers";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -22,6 +22,10 @@ export default function PaperViewPage() {
   const [detail, setDetail] = useState<JohnWebPaperDetail | null | undefined>(undefined);
 
   const paper = papers.find((p) => p.id === id);
+
+  if (!id || id === "undefined") {
+    return <Navigate to="/papers" replace />;
+  }
 
   useEffect(() => {
     let cancelled = false;

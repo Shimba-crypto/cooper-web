@@ -70,6 +70,7 @@ export default function SearchPage() {
       }
     });
     (jw?.papers ?? []).forEach((p) => {
+      if (!p.id) return;
       results.push({
         id: p.id,
         title: p.title,
@@ -79,6 +80,7 @@ export default function SearchPage() {
       });
     });
     (jw?.questions ?? []).forEach((question) => {
+      if (!question.paperId) return;
       results.push({
         id: question.id,
         title: `${question.paperTitle} — Q${question.questionNumber}: ${question.text}`,
