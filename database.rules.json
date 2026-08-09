@@ -212,6 +212,10 @@
     "tradeOffers": {
       ".read": true,
       ".write": false
+    },
+    "nexas": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
     }
   }
 }
