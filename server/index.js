@@ -1675,9 +1675,10 @@ const activateNexaPlan = async ({ uid, planId, paymentId }) => {
 // merchant ledger + live rate so Firebase always has a recent copy.
 const mirroWallet = async (email, walletData) => {
   if (!walletData) return;
-  const safeEmail = String(email).replace(/[^a-zA-Z0-9@._-]/g, "_");
+  const safeEmail = String(email).replace(/\./g, "_");
   await db.ref(`nexas/wallets/${safeEmail}`).set({
     ...walletData,
+    email: String(email),
     syncedAt: Date.now(),
   });
 };

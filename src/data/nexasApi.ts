@@ -80,7 +80,7 @@ export const nexasConfig = async (): Promise<NexasConfig | null> => {
 
 export const nexasFirebaseWallet = async (email: string): Promise<NexasWallet | null> => {
   try {
-    const safeEmail = email.replace(/[^a-zA-Z0-9@._-]/g, "_");
+    const safeEmail = email.replace(/\./g, "_");
     const snap = await get(ref(db, `nexas/wallets/${safeEmail}`));
     const v = snap.val();
     if (!v) return null;
