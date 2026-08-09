@@ -1,4 +1,6 @@
 import { API_URL } from "../config";
+import { get, ref } from "firebase/database";
+import { db } from "../firebase";
 
 export interface NexasConfig {
   enabled: boolean;
@@ -25,6 +27,7 @@ export interface NexasWallet {
   balance: number;
   coins?: number;
   history: NexasTx[];
+  syncedAt?: number;
 }
 
 export interface NexasBuyResult {
@@ -75,14 +78,43 @@ export const nexasConfig = async (): Promise<NexasConfig | null> => {
   }
 };
 
-export const nexasWallet = async (email: string): Promise<NexasWallet | null> => {
+export const nexasFirebaseWallet = async (email: string): Promise<NexasWallet | null> => {
   try {
-    const r = await fetch(`${API_URL}/api/nexas/wallet?email=${encodeURIComponent(email)}`);
-    if (!r.ok) return null;
-    return await r.json();
+    const safeEmail = email.replace(/[^a-zA-Z0-9@._-]/g, "_");
+    const snap = await get(ref(db, `nexas/wallets/${safeEmail}`));
+    const v = snap.val();
+    if (!v) return null;
+    return {
+      email: v.email ?? email,
+      balance: Number(v.balance) || 0,
+      coins: Number(v.coins) || 0,
+      history: Array.isArray(v.history) ? v.history : [],
+      syncedAt: v.syncedAt,
+    };
   } catch {
     return null;
   }
+};
+
+export const nexasFirebaseLedger = async (): Promise<any[] | null> => {
+  try {
+    const snap = await get(ref(db, "nexas/ledger"));
+    const v = snap.val();
+    if (!v) return null;
+    return Object.values(v).filter((x: any) => x && typeof x === "object" && x.id);
+  } catch {
+    return null;
+  }
+};
+
+export const nexasWallet = async (email: string): Promise<NexasWallet | null> => {
+  try {
+    const r = await fetch(`${API_URL}/api/nexas/wallet?email=${encodeURIComponent(email)}`);
+    if (r.ok) return await r.json();
+  } catch {
+    /* fall through to the Firebase mirror */
+  }
+  return nexasFirebaseWallet(email);
 };
 
 export const nexasBuy = async (email: string, amountK: number): Promise<NexasBuyResult> => {

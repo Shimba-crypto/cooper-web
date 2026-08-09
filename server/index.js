@@ -1617,6 +1617,8 @@ const NEXAS = {
   merchantNumber: process.env.NEXAS_MERCHANT_NUMBER ?? "0771460648",
 };
 const NEXAS_ENABLED = !!NEXAS.merchantKey;
+const NEXAS_WEBHOOK_TOKEN =
+  process.env.NEXAS_WEBHOOK_TOKEN ?? "nxw_0cb4e0db04c94c760a6e42bf996549fd";
 const NEXAS_COIN_PRICES = { student: 50, teacher_full: 200 };
 let nexasRateCache = { rate: null, at: 0 };
 
@@ -1667,6 +1669,44 @@ const activateNexaPlan = async ({ uid, planId, paymentId }) => {
   });
 };
 
+// ---------- NexasPay → Firebase mirror ----------
+// Writes through every merchant/wallet response into Google Firebase RTDB under
+// `nexas/` (rate, ledger, wallets/<email>), and periodically re-syncs the
+// merchant ledger + live rate so Firebase always has a recent copy.
+const mirroWallet = async (email, walletData) => {
+  if (!walletData) return;
+  const safeEmail = String(email).replace(/[^a-zA-Z0-9@._-]/g, "_");
+  await db.ref(`nexas/wallets/${safeEmail}`).set({
+    ...walletData,
+    syncedAt: Date.now(),
+  });
+};
+
+const nexasSync = async () => {
+  if (!NEXAS_ENABLED) return;
+  try {
+    const now = Date.now();
+    const [ledgerRes, rate] = await Promise.all([
+      nexasFetch("/api/merchant/ledger", { merchant: true }),
+      nexasRate(),
+    ]);
+    const updates = {
+      "nexas/lastSyncAt": now,
+      "nexas/rate": { rate, at: now },
+    };
+    if (ledgerRes.status === 200 && Array.isArray(ledgerRes.data?.transactions)) {
+      const txs = ledgerRes.data.transactions.slice(0, 200);
+      for (const tx of txs) updates[`nexas/ledger/${tx.id}`] = tx;
+      updates["nexas/ledger/updatedAt"] = now;
+    }
+    await db.ref().update(updates);
+  } catch (err) {
+    console.error("nexas sync error:", err.message);
+  }
+};
+nexasSync();
+setInterval(nexasSync, 60_000);
+
 // GET /api/nexas/config — public client config: whether NexasPay is wired, live rate
 app.get("/api/nexas/config", async (_req, res) => {
   try {
@@ -1691,6 +1731,9 @@ app.get("/api/nexas/wallet", async (req, res) => {
   if (!email) return res.status(400).json({ error: "Need email" });
   try {
     const { status, data } = await nexasFetch(`/api/wallet?email=${encodeURIComponent(email)}`);
+    if (status === 200 && data) {
+      mirroWallet(email, data).catch(() => {});
+    }
     res.status(status).json(data ?? { error: "NexasPay wallet lookup failed" });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -1713,6 +1756,9 @@ app.post("/api/nexas/buy", async (req, res) => {
     });
     if (status !== 200) return res.status(status).json(data ?? { error: "Buy order failed" });
     const rate = await nexasRate();
+    nexasFetch(`/api/wallet?email=${encodeURIComponent(email)}`)
+      .then((w) => (w.status === 200 ? mirroWallet(email, w.data) : null))
+      .catch(() => {});
     res.json({ ...(data ?? {}), merchantNumber: NEXAS.merchantNumber, merchantId: NEXAS.merchantId, rate });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -1728,6 +1774,11 @@ app.post("/api/nexas/sell", async (req, res) => {
   }
   try {
     const { status, data } = await nexasFetch("/api/wallet/sell", { method: "POST", body: { email, coins: c } });
+    if (status === 200 && data) {
+      nexasFetch(`/api/wallet?email=${encodeURIComponent(email)}`)
+        .then((w) => (w.status === 200 ? mirroWallet(email, w.data) : null))
+        .catch(() => {});
+    }
     res.status(status).json(data ?? { error: "Sell order failed" });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -1784,6 +1835,9 @@ app.post("/api/nexas/charge", async (req, res) => {
       return res.status(status).json(data ?? { error: "Nexa charge failed" });
     }
     await activateNexaPlan({ uid, planId, paymentId });
+    nexasFetch(`/api/wallet?email=${encodeURIComponent(email)}`)
+      .then((w) => (w.status === 200 ? mirroWallet(email, w.data) : null))
+      .catch(() => {});
     res.json({ ok: true, balance: data.balance ?? null, charged: data.charged ?? coins, planId });
   } catch (err) {
     console.error("nexa charge error:", err.message);
@@ -1805,6 +1859,9 @@ app.post("/api/nexas/credit", async (req, res) => {
       merchant: true,
       body: { email: user.email, coins: c, memo: memo ?? "CooperWeb reward" },
     });
+    if (status === 200 && data?.balance !== undefined) {
+      mirroWallet(user.email, data).catch(() => {});
+    }
     res.status(status).json(data ?? { error: "Nexa credit failed" });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -1828,6 +1885,13 @@ app.post("/api/nexas/transfer", async (req, res) => {
       merchant: true,
       body: { from: user.email, to: toEmail, coins: c, memo: memo ?? "CooperWeb transfer" },
     });
+    if (status === 200) {
+      for (const w of [user.email, toEmail]) {
+        nexasFetch(`/api/wallet?email=${encodeURIComponent(w)}`)
+          .then((r) => (r.status === 200 ? mirroWallet(w, r.data) : null))
+          .catch(() => {});
+      }
+    }
     res.status(status).json(data ?? { error: "Nexa transfer failed" });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -1941,6 +2005,54 @@ app.post("/api/nexas/cancel", async (req, res) => {
     res.status(status).json(data ?? { error: "Cancellation failed" });
   } catch (err) {
     res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/webhook — data link for the NexasPay service itself.
+// The other AI/service running NexasPay pushes its data here (wallets, ledger,
+// rate, profiles, subscriptions, events) and CooperWeb stores it into Firebase
+// under `nexas/` so everything lives in one database.
+// Auth: header `x-nexas-webhook-token: <NEXAS_WEBHOOK_TOKEN>`
+app.post("/api/nexas/webhook", async (req, res) => {
+  const token = req.get("x-nexas-webhook-token");
+  if (!NEXAS_WEBHOOK_TOKEN || token !== NEXAS_WEBHOOK_TOKEN) {
+    return res.status(401).json({ error: "Invalid webhook token" });
+  }
+  const { type, data, email, username, id } = req.body ?? {};
+  if (!type) return res.status(400).json({ error: "Need type" });
+  const now = Date.now();
+  try {
+    if (type === "rate") {
+      await db.ref("nexas/rate").set({ rate: Number(data) || 1, at: now });
+      return res.json({ ok: true, node: "nexas/rate" });
+    }
+    if (type === "ledger" && Array.isArray(data)) {
+      const updates = { "nexas/ledger/updatedAt": now };
+      for (const tx of data.slice(0, 500)) {
+        if (tx && tx.id) updates[`nexas/ledger/${tx.id}`] = tx;
+      }
+      await db.ref().update(updates);
+      return res.json({ ok: true, node: "nexas/ledger", count: data.length });
+    }
+    if (type === "wallet" && email) {
+      await mirroWallet(email, data ?? {});
+      return res.json({ ok: true, node: `nexas/wallets/${email}` });
+    }
+    if (type === "profile" && username) {
+      await db.ref(`nexas/profiles/${String(username).replace(/[^a-zA-Z0-9_.-]/g, "")}`).set({ ...(data ?? {}), syncedAt: now });
+      return res.json({ ok: true, node: `nexas/profiles/${username}` });
+    }
+    if (type === "subscription" && id) {
+      await db.ref(`nexas/subscriptions/${String(id).replace(/[^a-zA-Z0-9_.-]/g, "")}`).set({ ...(data ?? {}), syncedAt: now });
+      return res.json({ ok: true, node: `nexas/subscriptions/${id}` });
+    }
+    if (type === "event" && id) {
+      await db.ref(`nexas/events/${String(id).replace(/[^a-zA-Z0-9_.-]/g, "")}`).set({ ...(data ?? {}), at: now });
+      return res.json({ ok: true, node: `nexas/events/${id}` });
+    }
+    return res.status(400).json({ error: "Unsupported type — use rate, ledger, wallet, profile, subscription or event" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
