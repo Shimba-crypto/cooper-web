@@ -2051,7 +2051,42 @@ app.post("/api/nexas/webhook", async (req, res) => {
       await db.ref(`nexas/events/${String(id).replace(/[^a-zA-Z0-9_.-]/g, "")}`).set({ ...(data ?? {}), at: now });
       return res.json({ ok: true, node: `nexas/events/${id}` });
     }
-    return res.status(400).json({ error: "Unsupported type — use rate, ledger, wallet, profile, subscription or event" });
+    // ---- Nexa Auth mirror (devices, sessions, security, privacy) ----
+    if (type === "device" && email) {
+      await db.ref(`nexas/devices/${String(email).replace(/\./g, "_")}/${String(id ?? Date.now()).replace(/[^a-zA-Z0-9_.-]/g, "")}`).set({ ...(data ?? {}), syncedAt: now });
+      return res.json({ ok: true, node: `nexas/devices/${email}` });
+    }
+    if (type === "session" && email) {
+      await db.ref(`nexas/sessions/${String(email).replace(/\./g, "_")}/${String(id ?? Date.now()).replace(/[^a-zA-Z0-9_.-]/g, "")}`).set({ ...(data ?? {}), syncedAt: now });
+      return res.json({ ok: true, node: `nexas/sessions/${email}` });
+    }
+    if (type === "security" && email) {
+      await db.ref(`nexas/security/${String(email).replace(/\./g, "_")}`).set({ ...(data ?? {}), syncedAt: now });
+      return res.json({ ok: true, node: `nexas/security/${email}` });
+    }
+    if (type === "privacy" && email) {
+      await db.ref(`nexas/privacy/${String(email).replace(/\./g, "_")}`).set({ ...(data ?? {}), syncedAt: now });
+      return res.json({ ok: true, node: `nexas/privacy/${email}` });
+    }
+    return res.status(400).json({ error: "Unsupported type — use rate, ledger, wallet, profile, subscription, event, device, session, security or privacy" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/nexas/ledger — read the mirrored NexasPay merchant ledger (public).
+// This is the read side of the Firebase link: whatever the NexasPay service
+// (or CooperWeb) pushed into `nexas/ledger` is returned newest-first.
+app.get("/api/nexas/ledger", async (_req, res) => {
+  try {
+    const snap = await db.ref("nexas/ledger").once("value");
+    const v = snap.val() ?? {};
+    const { updatedAt, ...txs } = v;
+    const entries = Object.values(txs)
+      .filter((tx) => tx && typeof tx === "object" && tx.id)
+      .sort((a, b) => String(b.at ?? b.id ?? "").localeCompare(String(a.at ?? a.id ?? "")))
+      .slice(0, 200);
+    res.json({ count: entries.length, updatedAt: updatedAt ?? null, transactions: entries });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
