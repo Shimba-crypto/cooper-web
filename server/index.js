@@ -835,6 +835,17 @@ app.post("/api/earn", async (req, res) => {
 
     await db.ref().update(updates);
     const balance = (await db.ref(`users/${uid}/coins`).once("value")).val() ?? 0;
+    // NexasPay reward: mirror the CooperCoins earned onto the user's NexaCoin
+    // wallet (merchant-key guarded; never blocks the quiz flow).
+    if (NEXAS_ENABLED && earned > 0 && user.email) {
+      nexasFetch("/api/merchant/credit", {
+        method: "POST",
+        merchant: true,
+        body: { email: user.email, coins: earned, memo: "CooperWeb quiz reward" },
+      }).catch(() => {
+        /* quiet — CooperCoins still awarded even if Nexa fails */
+      });
+    }
     res.json({ ok: true, earned, balance, bonuses });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1595,6 +1606,341 @@ app.post("/api/dpo/callback", express.text({ type: () => true }), async (req, re
   } catch (err) {
     console.error("dpo callback parse error:", err.message);
     res.status(200).type("application/xml").send(okXml);
+  }
+});
+
+// ---------- NexasPay (ZamAI unified payments / NexasCoin) ----------
+const NEXAS = {
+  baseUrl: process.env.NEXAS_BASE_URL ?? "https://nexas-pay.onrender.com",
+  merchantKey: process.env.NEXAS_MERCHANT_KEY ?? "np_9txq8poxi6_xwof2mc7ds",
+  merchantId: process.env.NEXAS_MERCHANT_ID ?? "cooperweb",
+  merchantNumber: process.env.NEXAS_MERCHANT_NUMBER ?? "0771460648",
+};
+const NEXAS_ENABLED = !!NEXAS.merchantKey;
+const NEXAS_COIN_PRICES = { student: 50, teacher_full: 200 };
+let nexasRateCache = { rate: null, at: 0 };
+
+async function nexasRate() {
+  const now = Date.now();
+  if (nexasRateCache.rate && now - nexasRateCache.at < 60000) return nexasRateCache.rate;
+  try {
+    const res = await fetch(`${NEXAS.baseUrl}/api/rate`);
+    const data = await res.json();
+    nexasRateCache = { rate: Number(data.rate) || 1, at: now };
+  } catch {
+    nexasRateCache = { rate: 1, at: now };
+  }
+  return nexasRateCache.rate;
+}
+
+async function nexasFetch(path, { method = "GET", body, merchant = false } = {}) {
+  const headers = merchant ? { "X-Merchant-Key": NEXAS.merchantKey } : {};
+  if (body) headers["Content-Type"] = "application/json";
+  const res = await fetch(`${NEXAS.baseUrl}${path}`, {
+    method,
+    headers,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* non-JSON body */
+  }
+  return { status: res.status, data };
+}
+
+const activateNexaPlan = async ({ uid, planId, paymentId }) => {
+  const updates = {
+    [`payments/${uid}/${paymentId}/status`]: "confirmed",
+    [`payments/${uid}/${paymentId}/confirmedAt`]: Date.now(),
+    [`payments/${uid}/${paymentId}/momoTransactionId`]: `nexa:${Date.now()}`,
+    [`users/${uid}/plan`]: { id: planId, activatedAt: Date.now(), claimedVia: "nexa" },
+  };
+  await db.ref().update(updates);
+  const planLabel = planId === "teacher_full" ? "Teacher Full" : planId === "student" ? "Student" : planId;
+  await notifyUser(uid, {
+    type: "payment",
+    title: "Payment confirmed",
+    message: `Your ${planLabel} plan is now active. Welcome aboard!`,
+    link: "/dashboard",
+  });
+};
+
+// GET /api/nexas/config — public client config: whether NexasPay is wired, live rate
+app.get("/api/nexas/config", async (_req, res) => {
+  try {
+    const rate = await nexasRate();
+    res.json({
+      enabled: NEXAS_ENABLED,
+      baseUrl: NEXAS.baseUrl,
+      merchantId: NEXAS.merchantId,
+      merchantNumber: NEXAS.merchantNumber,
+      coinPrices: NEXAS_COIN_PRICES,
+      plans: PLAN_PRICES,
+      rate,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/nexas/wallet?email=... — user's NexasCoin wallet (public lookup, wallet auto-creates)
+app.get("/api/nexas/wallet", async (req, res) => {
+  const email = String(req.query.email ?? "");
+  if (!email) return res.status(400).json({ error: "Need email" });
+  try {
+    const { status, data } = await nexasFetch(`/api/wallet?email=${encodeURIComponent(email)}`);
+    res.status(status).json(data ?? { error: "NexasPay wallet lookup failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/buy  body: { email, amountK }
+// Public: creates a buy order — user pays K to the NexasPay mobile-money number.
+app.post("/api/nexas/buy", async (req, res) => {
+  const { email, amountK } = req.body ?? {};
+  const amt = Number(amountK);
+  if (!email || !Number.isFinite(amt) || amt <= 0) {
+    return res.status(400).json({ error: "Need email and a positive amountK" });
+  }
+  try {
+    const { status, data } = await nexasFetch("/api/wallet/buy", {
+      method: "POST",
+      body: { email, amountK: amt },
+      merchant: true,
+    });
+    if (status !== 200) return res.status(status).json(data ?? { error: "Buy order failed" });
+    const rate = await nexasRate();
+    res.json({ ...(data ?? {}), merchantNumber: NEXAS.merchantNumber, merchantId: NEXAS.merchantId, rate });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/sell  body: { email, coins }
+app.post("/api/nexas/sell", async (req, res) => {
+  const { email, coins } = req.body ?? {};
+  const c = Number(coins);
+  if (!email || !Number.isFinite(c) || c <= 0) {
+    return res.status(400).json({ error: "Need email and a positive coin amount" });
+  }
+  try {
+    const { status, data } = await nexasFetch("/api/wallet/sell", { method: "POST", body: { email, coins: c } });
+    res.status(status).json(data ?? { error: "Sell order failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/charge  body: { uid, planId }
+// Charge the user's NexasCoin wallet for their plan and activate it.
+app.post("/api/nexas/charge", async (req, res) => {
+  const { uid, planId } = req.body ?? {};
+  const coins = NEXAS_COIN_PRICES[planId];
+  if (!uid || !coins) {
+    return res.status(400).json({ error: "Need uid and a valid planId" });
+  }
+  let email = "";
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
+    if (!user) return res.status(404).json({ error: "User not found" });
+    email = user.email ?? "";
+    if (!email) return res.status(400).json({ error: "Account has no email — cannot link a NexasCoin wallet" });
+    const lockSnap = await db.ref(`nexaCharges/${uid}`).once("value");
+    const lock = lockSnap.val();
+    if (lock && lock.planId === planId && Date.now() - (lock.at ?? 0) < 120000) {
+      return res.status(409).json({ error: "A Nexa charge is already in progress for this plan" });
+    }
+    const paymentId = `pay-nexa-${Date.now()}`;
+    const payment = {
+      id: paymentId,
+      uid,
+      email,
+      planId,
+      amount: coins,
+      method: "nexa",
+      phone: "",
+      status: "requested",
+      createdAt: Date.now(),
+    };
+    await db.ref().update({
+      [`payments/${uid}/${paymentId}`]: payment,
+      [`nexaCharges/${uid}`]: { planId, at: Date.now() },
+    });
+    const { status, data } = await nexasFetch("/api/merchant/charge", {
+      method: "POST",
+      merchant: true,
+      body: { email, coins, memo: `CooperWeb ${planId} plan (${coins} NexaCoin)` },
+    });
+    if (status !== 200) {
+      const insufficient = data?.error === "insufficient balance" || data?.balance === undefined && status === 400;
+      await db.ref(`payments/${uid}/${paymentId}/status`).set("rejected");
+      if (insufficient) {
+        return res.status(400).json({ needsTopUp: true, error: "Not enough NexaCoin — buy more first." });
+      }
+      return res.status(status).json(data ?? { error: "Nexa charge failed" });
+    }
+    await activateNexaPlan({ uid, planId, paymentId });
+    res.json({ ok: true, balance: data.balance ?? null, charged: data.charged ?? coins, planId });
+  } catch (err) {
+    console.error("nexa charge error:", err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/credit  body: { uid, coins, memo? } — reward a user's NexaCoin wallet
+app.post("/api/nexas/credit", async (req, res) => {
+  const { uid, coins, memo } = req.body ?? {};
+  const c = Number(coins);
+  if (!uid || !Number.isFinite(c) || c < 0) return res.status(400).json({ error: "Need uid and coins" });
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
+    if (!user || !user.email) return res.status(404).json({ error: "User or email not found" });
+    const { status, data } = await nexasFetch("/api/merchant/credit", {
+      method: "POST",
+      merchant: true,
+      body: { email: user.email, coins: c, memo: memo ?? "CooperWeb reward" },
+    });
+    res.status(status).json(data ?? { error: "Nexa credit failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/transfer  body: { uid, toEmail, coins, memo? }
+// Move NexaCoin from the signed-in user to another email (QR / @username payments).
+app.post("/api/nexas/transfer", async (req, res) => {
+  const { uid, toEmail, coins, memo } = req.body ?? {};
+  const c = Number(coins);
+  if (!uid || !toEmail || !Number.isFinite(c) || c <= 0) {
+    return res.status(400).json({ error: "Need uid, toEmail and a positive coin amount" });
+  }
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
+    if (!user || !user.email) return res.status(404).json({ error: "User or email not found" });
+    const { status, data } = await nexasFetch("/api/merchant/transfer", {
+      method: "POST",
+      merchant: true,
+      body: { from: user.email, to: toEmail, coins: c, memo: memo ?? "CooperWeb transfer" },
+    });
+    res.status(status).json(data ?? { error: "Nexa transfer failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// GET /api/nexas/profile/lookup?username=... — find an @username → wallet email (public)
+app.get("/api/nexas/profile/lookup", async (req, res) => {
+  const username = String(req.query.username ?? "");
+  if (!username) return res.status(400).json({ error: "Need username" });
+  try {
+    const { status, data } = await nexasFetch(`/api/profile/by-username/${encodeURIComponent(username)}`);
+    res.status(status).json(data ?? { error: "Username lookup failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/profile  body: { uid, username }
+// Register an @username for easy payments.
+app.post("/api/nexas/profile", async (req, res) => {
+  const { uid, username } = req.body ?? {};
+  if (!uid || !username) return res.status(400).json({ error: "Need uid and username" });
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
+    if (!user || !user.email) return res.status(404).json({ error: "User or email not found" });
+    const { status, data } = await nexasFetch("/api/profile", {
+      method: "POST",
+      body: {
+        email: user.email,
+        username: String(username).replace(/^@/, "").trim(),
+        displayName: user.displayName ?? user.email.split("@")[0],
+      },
+    });
+    res.status(status).json(data ?? { error: "Profile registration failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// GET /api/nexas/profiles/search?q=... — public user search
+app.get("/api/nexas/profiles/search", async (req, res) => {
+  const q = String(req.query.q ?? "");
+  if (!q) return res.json({ results: [] });
+  try {
+    const { status, data } = await nexasFetch(`/api/profiles/search?q=${encodeURIComponent(q)}`);
+    res.status(status).json(data ?? []);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// GET /api/nexas/notifications?email=... — in-app notifications for a wallet
+app.get("/api/nexas/notifications", async (req, res) => {
+  const email = String(req.query.email ?? "");
+  if (!email) return res.status(400).json({ error: "Need email" });
+  try {
+    const { status, data } = await nexasFetch(`/api/notifications?email=${encodeURIComponent(email)}`);
+    res.status(status).json(data ?? {});
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/notifications/read  body: { email, id }
+app.post("/api/nexas/notifications/read", async (req, res) => {
+  const { email, id } = req.body ?? {};
+  if (!email || !id) return res.status(400).json({ error: "Need email and id" });
+  try {
+    const { status, data } = await nexasFetch("/api/notifications/read", {
+      method: "POST",
+      body: { email, id },
+    });
+    res.status(status).json(data ?? { ok: true });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/subscribe  body: { uid, subscriptionId } — recurring plan
+app.post("/api/nexas/subscribe", async (req, res) => {
+  const { uid, subscriptionId } = req.body ?? {};
+  if (!uid || !subscriptionId) return res.status(400).json({ error: "Need uid and subscriptionId" });
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
+    if (!user || !user.email) return res.status(404).json({ error: "User or email not found" });
+    const { status, data } = await nexasFetch("/api/subscriptions/subscribe", {
+      method: "POST",
+      body: { email: user.email, subscriptionId },
+    });
+    res.status(status).json(data ?? { error: "Subscription failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/cancel  body: { uid, subscriptionId }
+app.post("/api/nexas/cancel", async (req, res) => {
+  const { uid, subscriptionId } = req.body ?? {};
+  if (!uid || !subscriptionId) return res.status(400).json({ error: "Need uid and subscriptionId" });
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
+    if (!user || !user.email) return res.status(404).json({ error: "User or email not found" });
+    const { status, data } = await nexasFetch("/api/subscriptions/cancel", {
+      method: "POST",
+      body: { email: user.email, subscriptionId },
+    });
+    res.status(status).json(data ?? { error: "Cancellation failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
   }
 });
 

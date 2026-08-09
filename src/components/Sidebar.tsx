@@ -1,6 +1,7 @@
 import { Link, NavLink } from "react-router-dom";
 import {
   BookOpen,
+  Coins,
   Contact,
   CreditCard,
   Dices,
@@ -56,6 +57,7 @@ const linkItems: { to: string; label: string; icon: LucideIcon; end?: boolean; g
   { to: "/card", label: "My Card", icon: CreditCard, gated: true },
   { to: "/trading", label: "Trading Post", icon: Handshake, gated: true },
   { to: "/payments", label: "Payments", icon: Wallet },
+  { to: "/wallet", label: "Nexa Wallet", icon: Coins },
   { to: "/john-web", label: "John Web", icon: ExternalLink },
   { to: "/api-docs", label: "API Docs", icon: FileText },
   { to: "/create-quiz", label: "Create Quiz", icon: Plus },

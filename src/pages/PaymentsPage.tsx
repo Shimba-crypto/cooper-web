@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { CheckCircle2, CreditCard, Phone } from "lucide-react";
+import { CheckCircle2, Coins, CreditCard, Phone } from "lucide-react";
 import { ref, set } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { PLANS, planName } from "../utils/plans";
 import RedeemCard from "../components/RedeemCard";
 import { PAYMENT_MERCHANT_NUMBER, API_URL } from "../config";
+import { nexasCharge, nexasConfig } from "../data/nexasApi";
 import type { PaymentRecord, PlanId } from "../types";
 
 const MERCHANT_DISPLAY = `+260 ${PAYMENT_MERCHANT_NUMBER.slice(1, 3)} ${PAYMENT_MERCHANT_NUMBER.slice(3, 6)} ${PAYMENT_MERCHANT_NUMBER.slice(6)}`;
@@ -30,6 +31,11 @@ export default function PaymentsPage() {
   const [dpoEnabled, setDpoEnabled] = useState(false);
   const [dpoBusy, setDpoBusy] = useState(false);
   const [dpoMsg, setDpoMsg] = useState<string | null>(null);
+  const [nexaEnabled, setNexaEnabled] = useState(false);
+  const [nexaRate, setNexaRate] = useState(1);
+  const [nexaCoins, setNexaCoins] = useState<Record<string, number>>({});
+  const [nexaBusy, setNexaBusy] = useState(false);
+  const [nexaMsg, setNexaMsg] = useState<string | null>(null);
 
   const buyablePlans = Object.values(PLANS);
   const discount = appUser?.discount;
@@ -47,6 +53,13 @@ export default function PaymentsPage() {
       .then((r) => r.json())
       .then((cfg) => setDpoEnabled(Boolean(cfg?.enabled)))
       .catch(() => setDpoEnabled(false));
+    nexasConfig().then((cfg) => {
+      if (cfg?.enabled) {
+        setNexaEnabled(true);
+        setNexaRate(cfg.rate || 1);
+        setNexaCoins(cfg.coinPrices ?? {});
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -185,6 +198,25 @@ export default function PaymentsPage() {
   };
 
   const entries = myPayments ? Object.values(myPayments).sort((a, b) => b.createdAt - a.createdAt) : [];
+
+  const payWithNexa = async () => {
+    setNexaBusy(true);
+    setNexaMsg(null);
+    try {
+      const res = await nexasCharge(user.uid, plan);
+      if (res.ok) {
+        setNexaMsg(`${planName(plan)} activated! ${res.charged ?? 0} NexaCoin charged.`);
+      } else if (res.needsTopUp) {
+        setNexaMsg("Not enough NexaCoin in your wallet — buy some first.");
+      } else {
+        setNexaMsg(res.error ?? "NexaPay payment failed. Try again shortly.");
+      }
+    } catch (err) {
+      setNexaMsg(`NexaPay failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setNexaBusy(false);
+    }
+  };
 
   const payWithMomo = async () => {
     if (!phone.trim()) return;
@@ -381,8 +413,42 @@ export default function PaymentsPage() {
               {dpoMsg && <p className={`mt-2 text-xs ${dpoMsg.startsWith("DPO failed") ? "text-red-600 dark:text-red-400" : "text-indigo-800 dark:text-indigo-300"}`}>{dpoMsg}</p>}
             </div>
           )}
+          {nexaEnabled && (
+            <div className="rounded-lg border border-teal-200 bg-teal-50 p-4 dark:border-teal-900 dark:bg-teal-950/40">
+              <p className="flex items-center gap-2 text-sm font-bold text-teal-800 dark:text-teal-300">
+                <Coins className="h-4 w-4" /> Pay with NexaCoin (NexasPay)
+              </p>
+              <p className="mt-1 text-xs text-teal-700 dark:text-teal-400">
+                Pay {nexaCoins[plan] ?? "—"} NexaCoin (≈ K{Math.round((nexaCoins[plan] ?? 0) * nexaRate)}) from your Nexa
+                Wallet — your plan activates instantly. No coins? Buy them on the wallet page.
+              </p>
+              <button
+                type="button"
+                disabled={nexaBusy}
+                onClick={payWithNexa}
+                className="btn-primary mt-3 w-full disabled:opacity-60"
+              >
+                {nexaBusy ? "Paying…" : `Pay ${nexaCoins[plan] ?? "?"} NexaCoin now`}
+              </button>
+              {nexaMsg && (
+                <p className={`mt-2 text-xs ${nexaMsg.includes("activated") ? "text-teal-800 dark:text-teal-300" : "text-red-600 dark:text-red-400"}`}>
+                  {nexaMsg.startsWith("Not enough") ? (
+                    <>
+                      {nexaMsg}{" "}
+                      <Link to="/wallet" className="font-semibold underline">Open Nexa Wallet</Link>
+                    </>
+                  ) : (
+                    nexaMsg
+                  )}
+                </p>
+              )}
+            </div>
+          )}
           <p className="text-xs text-slate-400">
             Current plan: <span className="font-semibold">{planId}</span>. Manual payments are confirmed within 24 hours; MTN MoMo is instant.
+          </p>
+          <p className="text-xs text-slate-400">
+            Powered by <span className="font-semibold text-emerald-600">NexasPay</span> — buy coins via MTN/Airtel.
           </p>
         </form>
       )}
