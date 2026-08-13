@@ -34,6 +34,9 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         navigateFallback: "/index.html",
+        // Without this the SW answers this navigation with index.html, and
+        // Android's Digital Asset Links check cannot read assetlinks.json.
+        navigateFallbackDenylist: [/^\/\.well-known\//],
       },
     }),
   ],

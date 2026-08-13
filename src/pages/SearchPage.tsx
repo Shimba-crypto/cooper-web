@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { BookOpen, FileQuestion, FileText, HelpCircle, Search } from "lucide-react";
+import { BookOpen, Contact, FileQuestion, FileText, HelpCircle, Search } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { searchJohnWeb, type JohnWebSearchResult } from "../data/johnwebApi";
 import Spinner from "../components/Spinner";
-import type { Note, Paper, Quiz } from "../types";
+import type { AppUser, Note, Paper, Quiz } from "../types";
 
 interface Result {
   id: string;
   title: string;
   subject: string;
-  type: "paper" | "quiz" | "note" | "jw-paper" | "jw-question";
+  type: "paper" | "quiz" | "note" | "person" | "jw-paper" | "jw-question";
   link: string;
 }
 
@@ -21,13 +21,15 @@ export default function SearchPage() {
   const [papers, setPapers] = useState<Paper[] | null>(null);
   const [quizzes, setQuizzes] = useState<Quiz[] | null>(null);
   const [notes, setNotes] = useState<Note[] | null>(null);
+  const [people, setPeople] = useState<Record<string, AppUser> | null>(null);
   const [jw, setJw] = useState<JohnWebSearchResult | null>(null);
 
   useEffect(() => {
     const u1 = onValue(ref(db, "papers"), (s) => setPapers(Object.values(s.val() ?? {})));
     const u2 = onValue(ref(db, "quizzes"), (s) => setQuizzes(Object.values(s.val() ?? {})));
     const u3 = onValue(ref(db, "notes"), (s) => setNotes(Object.values(s.val() ?? {})));
-    return () => { u1(); u2(); u3(); };
+    const u4 = onValue(ref(db, "users"), (s) => setPeople(s.val() ?? {}));
+    return () => { u1(); u2(); u3(); u4(); };
   }, []);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export default function SearchPage() {
     setParams(p);
   };
 
-  const loading = papers === null || quizzes === null || notes === null;
+  const loading = papers === null || quizzes === null || notes === null || people === null;
 
   const results: Result[] = [];
   const q = query.toLowerCase().trim();
@@ -67,6 +69,11 @@ export default function SearchPage() {
     (notes ?? []).forEach((n) => {
       if (n.title.toLowerCase().includes(q) || n.subject.toLowerCase().includes(q) || n.content.toLowerCase().includes(q)) {
         results.push({ id: n.id, title: n.title, subject: n.subject, type: "note", link: `/notes/${n.id}` });
+      }
+    });
+    Object.entries(people ?? {}).forEach(([uid, p]) => {
+      if ((p.displayName ?? "").toLowerCase().includes(q)) {
+        results.push({ id: uid, title: p.displayName, subject: "Member", type: "person", link: `/profile/${uid}` });
       }
     });
     (jw?.papers ?? []).forEach((p) => {
@@ -95,6 +102,7 @@ export default function SearchPage() {
     if (type === "paper" || type === "jw-paper") return <BookOpen className="h-4 w-4" />;
     if (type === "quiz") return <FileQuestion className="h-4 w-4" />;
     if (type === "jw-question") return <HelpCircle className="h-4 w-4" />;
+    if (type === "person") return <Contact className="h-4 w-4" />;
     return <FileText className="h-4 w-4" />;
   };
 
@@ -103,13 +111,16 @@ export default function SearchPage() {
     if (type === "quiz") return "Quiz";
     if (type === "jw-paper") return "John Web paper";
     if (type === "jw-question") return "John Web question";
+    if (type === "person") return "Member";
     return "Note";
   };
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Search</h1>
-      <p className="mt-1 text-slate-600 dark:text-slate-400">Find papers, quizzes, and notes.</p>
+      <p className="mt-1 text-slate-600 dark:text-slate-400">
+        One route to everything — papers, quizzes, notes, members and the John Web library.
+      </p>
 
       <div className="relative mt-6">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />

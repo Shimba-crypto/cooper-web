@@ -2460,7 +2460,8 @@ const CODE_TYPE_INFO: Record<RedeemCodeType, string> = {
   discount: "Gives users a % off Teacher Full when they pay by mobile money.",
   pack: "Unlocks specific premium quizzes for the redeemer.",
   market: "Unlocks the CooperCoins Market for the redeemer — entry ticket to the shop.",
-  coins: "Adds CooperCoins to the redeemer's wallet — each use grants the CC value.",
+  coins: "Adds a fixed amount of CooperCoins to the redeemer's wallet.",
+  dev_plan: "Grants the Developer plan (full access) — gifted to dev/test accounts only.",
 };
 
 function RedeemCodesTab() {
@@ -2505,7 +2506,9 @@ function RedeemCodesTab() {
       type,
       amount: type === "gift" ? 1 : Math.max(1, Number(amount)),
       usedCount: 0,
-      ...(type !== "discount" && type !== "pack" && type !== "market" && type !== "coins" ? { planId } : {}),
+      ...(type !== "discount" && type !== "pack" && type !== "market" && type !== "coins"
+        ? { planId: type === "dev_plan" ? "dev" : planId }
+        : {}),
       ...(type === "discount" ? { discountPercent: Number(discountPercent) } : {}),
       ...(type === "pack" ? { quizIds: Array.from(selectedQuizzes) } : {}),
       ...(type === "coins" ? { coinValue: Math.max(1, Number(coinValue)) } : {}),
@@ -2570,6 +2573,7 @@ function RedeemCodesTab() {
               <option value="pack">Quiz pack code — unlocks premium quizzes</option>
               <option value="market">Market code — unlocks the CooperCoins Market</option>
               <option value="coins">Coins code — adds CooperCoins to the wallet</option>
+              <option value="dev_plan">Developer plan code — full access, gifted by admins</option>
             </select>
             <p className="mt-1 text-xs text-slate-400">{CODE_TYPE_INFO[type]}</p>
           </label>
@@ -2658,7 +2662,7 @@ function RedeemCodesTab() {
                 <div>
                   <p className="font-mono font-bold text-slate-800 dark:text-slate-200">{c.code}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {c.type === "gift" ? "Gift" : c.type === "promo" ? "Promo" : c.type === "discount" ? `Discount ${c.discountPercent}%` : c.type === "market" ? "Market access" : c.type === "coins" ? `${c.coinValue ?? 0} CC each` : `Pack (${c.quizIds?.length ?? 0} quizzes)`} · used {c.usedCount}/{c.amount}
+                    {c.type === "gift" ? "Gift" : c.type === "promo" ? "Promo" : c.type === "discount" ? `Discount ${c.discountPercent}%` : c.type === "market" ? "Market access" : c.type === "coins" ? `${c.coinValue ?? 0} CC each` : c.type === "dev_plan" ? "Developer plan 🧪" : `Pack (${c.quizIds?.length ?? 0} quizzes)`} · used {c.usedCount}/{c.amount}
                     {c.expiresAt ? ` · expires ${new Date(c.expiresAt).toLocaleDateString()}` : ""}
                   </p>
                 </div>
@@ -2785,6 +2789,41 @@ function MarketTab() {
     showToast("Limited status removed.");
   };
 
+  const [exRate, setExRate] = useState("");
+  const [exRateBusy, setExRateBusy] = useState(false);
+
+  const setExchangeRate = async (e: FormEvent) => {
+    e.preventDefault();
+    const rate = Number(exRate);
+    if (!Number.isFinite(rate) || rate < 1 || rate > 10000) {
+      showToast("Rate must be between 1 and 10000.");
+      return;
+    }
+    const apiKey = localStorage.getItem("cooperweb:admin-api-key") ?? "";
+    if (!apiKey) {
+      showToast("Set your API key in the Broadcast tab first.");
+      return;
+    }
+    setExRateBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/exchange-rate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify({ rate }),
+      });
+      const data = await res.json();
+      if (!res.ok) showToast(data?.error ?? "Update failed");
+      else {
+        showToast(`Exchange rate set — 1 NexaCoin = ${data.rate} CC.`);
+        setExRate("");
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? `Update failed: ${err.message}` : "Update failed");
+    } finally {
+      setExRateBusy(false);
+    }
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       {toast}
@@ -2838,6 +2877,30 @@ function MarketTab() {
           </div>
           <button type="submit" disabled={coinBusy || !coinTarget} className="btn-primary disabled:opacity-60">
             {coinBusy ? "Adjusting…" : "Adjust coins"}
+          </button>
+        </form>
+      </div>
+
+      <div className="card p-6">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">CC ↔ Nexa exchange rate</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          How many CooperCoins one NexaCoin costs for the wallet exchange. Applied immediately.
+        </p>
+        <form onSubmit={setExchangeRate} className="mt-4 flex items-end gap-3">
+          <div className="flex-1">
+            <label className="label">CC per NexaCoin</label>
+            <input
+              type="number"
+              min={1}
+              max={10000}
+              value={exRate}
+              onChange={(e) => setExRate(e.target.value)}
+              placeholder="e.g. 50"
+              className="input"
+            />
+          </div>
+          <button type="submit" disabled={exRateBusy || !exRate} className="btn-primary disabled:opacity-60">
+            {exRateBusy ? "Saving…" : "Set rate"}
           </button>
         </form>
       </div>

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Gift, Handshake, Lock, Users } from "lucide-react";
+import { Gift, Handshake, Lock, Users, Wallet } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { hasInteractiveAccess } from "../utils/plans";
 import Spinner from "../components/Spinner";
 import Avatar from "../components/Avatar";
 import { useToast } from "../components/Toast";
 import { NAME_COLORS, STATUS_EMOJIS } from "../data/market";
+import { nexasTransfer } from "../data/nexasApi";
 import { API_URL } from "../config";
 import type { PlanId } from "../types";
 
@@ -34,6 +35,9 @@ export default function PeoplePage() {
   const [giftFor, setGiftFor] = useState<string | null>(null);
   const [giftAmount, setGiftAmount] = useState("5");
   const [gifting, setGifting] = useState(false);
+  const [payFor, setPayFor] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState("10");
+  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +85,34 @@ export default function PeoplePage() {
     }
   };
 
+  const sendPay = async (person: Person) => {
+    if (!user) return;
+    const amt = Number(payAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      showToast("Enter a positive amount of NexaCoin.");
+      return;
+    }
+    setPaying(true);
+    try {
+      const res = await nexasTransfer({
+        uid: user.uid,
+        toUid: person.uid,
+        coins: Math.floor(amt),
+        memo: `Payment to ${person.displayName}`,
+      });
+      if (res.ok) {
+        showToast(`Paid ${Math.floor(amt)} NexaCoin to ${person.displayName}!`);
+        setPayFor(null);
+      } else {
+        showToast(res.error ?? `Payment failed.`);
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? `Payment failed: ${err.message}` : "Payment failed — try again.");
+    } finally {
+      setPaying(false);
+    }
+  };
+
   if (error) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">
@@ -104,7 +136,7 @@ export default function PeoplePage() {
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">People</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {people.length} {people.length === 1 ? "member" : "members"} of the CooperWeb community.
-            Gifts are capped at 50 CC per day.
+            Gifts are capped at 50 CC per day, and NexaCoin payments come from your wallet.
           </p>
         </div>
       </div>
@@ -204,6 +236,38 @@ export default function PeoplePage() {
                             className="flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-200 disabled:opacity-50 dark:bg-amber-950/50 dark:text-amber-400 dark:hover:bg-amber-950"
                           >
                             <Gift className="h-3.5 w-3.5" /> Gift
+                          </button>
+                        )}
+                        {payFor === person.uid ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min={1}
+                              value={payAmount}
+                              onChange={(e) => setPayAmount(e.target.value)}
+                              className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-fuchsia-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                            />
+                            <button
+                              onClick={() => sendPay(person)}
+                              disabled={paying}
+                              className="rounded-lg bg-fuchsia-600 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                            >
+                              {paying ? "…" : "Send"}
+                            </button>
+                            <button
+                              onClick={() => setPayFor(null)}
+                              className="rounded-lg bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setPayFor(person.uid)}
+                            title="Pay them NexaCoin from your wallet"
+                            className="flex items-center gap-1 rounded-lg bg-fuchsia-100 px-2.5 py-1.5 text-xs font-semibold text-fuchsia-700 transition hover:bg-fuchsia-200 dark:bg-fuchsia-950/50 dark:text-fuchsia-400 dark:hover:bg-fuchsia-950"
+                          >
+                            <Wallet className="h-3.5 w-3.5" /> Pay
                           </button>
                         )}
                       </>

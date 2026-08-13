@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Coins, CreditCard, Eye, EyeOff, Lock, Share2, Star } from "lucide-react";
+import { Coins, CreditCard, Eye, EyeOff, Lock, Share2, Star, Wallet } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { onValue, ref, set } from "firebase/database";
 import { db } from "../firebase";
@@ -10,6 +10,7 @@ import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/Toast";
 import { CHIP_CLASSES, DESIGN_GRADIENTS, PATTERN_CLASSES } from "../data/market";
+import { nexasLookupUsername, nexasTransfer, nexasWallet } from "../data/nexasApi";
 import { API_URL } from "../config";
 import type { CardTier, DigitalCard, WalletItem } from "../types";
 
@@ -90,6 +91,17 @@ export default function CardPage() {
   const [showQr, setShowQr] = useState(false);
   const [showFullNumber, setShowFullNumber] = useState(false);
   const [removingPin, setRemovingPin] = useState(false);
+  const [nexaBalance, setNexaBalance] = useState<number | null>(null);
+  const [payTo, setPayTo] = useState("");
+  const [payCoins, setPayCoins] = useState("");
+  const [payMemo, setPayMemo] = useState("");
+  const [payBusy, setPayBusy] = useState(false);
+  const [payMsg, setPayMsg] = useState<string | null>(null);
+  const [cardNum, setCardNum] = useState("");
+  const [cardNumCoins, setCardNumCoins] = useState("");
+  const [cardNumPin, setCardNumPin] = useState("");
+  const [cardPayBusy, setCardPayBusy] = useState(false);
+  const [cardPayMsg, setCardPayMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -119,6 +131,17 @@ export default function CardPage() {
   useEffect(() => {
     setNickname(appUser?.cardNickname ?? "");
   }, [appUser?.cardNickname]);
+
+  useEffect(() => {
+    if (!appUser?.email) return;
+    let cancelled = false;
+    nexasWallet(appUser.email).then((w) => {
+      if (!cancelled) setNexaBalance(w?.balance ?? 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [appUser?.email]);
 
   if (!user) {
     return (
@@ -250,6 +273,90 @@ export default function CardPage() {
 
   const nextTierName = tierInfo.next ? TIER_ORDER[TIER_ORDER.indexOf(tier) + 1] : null;
 
+  const payWithCard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const c = Number(payCoins);
+    const target = payTo.trim();
+    if (!target || !c || c <= 0) {
+      showToast("Enter a recipient and a positive amount.");
+      return;
+    }
+    setPayBusy(true);
+    setPayMsg(null);
+    try {
+      let toEmail = target;
+      if (target.startsWith("@")) {
+        const prof = await nexasLookupUsername(target.slice(1));
+        if (!prof?.email) throw new Error(`No user found for ${target}`);
+        toEmail = prof.email;
+      }
+      const res = await nexasTransfer({
+        uid: user.uid,
+        toEmail,
+        coins: c,
+        memo: payMemo.trim() || "Card payment",
+      });
+      if (res.ok) {
+        setPayMsg(`Paid ${c} NexaCoin to ${target} with your card.`);
+        setPayTo("");
+        setPayCoins("");
+        setPayMemo("");
+        if (appUser?.email) {
+          const w = await nexasWallet(appUser.email);
+          setNexaBalance(w?.balance ?? 0);
+        }
+      } else {
+        setPayMsg(res.error ?? "Payment failed.");
+      }
+    } catch (err) {
+      setPayMsg(`Payment failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
+  const payByCardNumber = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const c = Number(cardNumCoins);
+    const number = cardNum.trim().toUpperCase();
+    if (!number || !c || c <= 0) {
+      showToast("Enter a card number and a positive amount.");
+      return;
+    }
+    setCardPayBusy(true);
+    setCardPayMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/api/card/pay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: user.uid,
+          cardNumber: number,
+          coins: c,
+          memo: "Card payment",
+          ...(cardNumPin.trim() ? { pin: cardNumPin.trim() } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCardPayMsg(data?.error ?? `Payment failed (${res.status})`);
+      } else {
+        setCardPayMsg(`Paid ${c} NexaCoin to card ${number}.`);
+        setCardNum("");
+        setCardNumCoins("");
+        setCardNumPin("");
+        if (appUser?.email) {
+          const w = await nexasWallet(appUser.email);
+          setNexaBalance(w?.balance ?? 0);
+        }
+      }
+    } catch (err) {
+      setCardPayMsg(`Payment failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setCardPayBusy(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       {toast}
@@ -345,7 +452,8 @@ export default function CardPage() {
           <div className="flex-1 text-sm text-slate-500 dark:text-slate-400">
             <p className="font-bold text-slate-900 dark:text-white">Scan to verify</p>
             <p className="mt-1">
-              Anyone can scan your card's QR code to confirm this CooperCard belongs to you.
+              Anyone can scan your card's QR code to confirm this CooperCard belongs to you —
+              or type <span className="font-mono font-semibold">{card.number}</span> to pay you NexaCoin.
             </p>
           </div>
         </div>
@@ -563,6 +671,155 @@ export default function CardPage() {
               {appUser?.showcasedCard ? "Shown on profile" : "Show on profile"}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="card mt-6 p-6">
+        <h2 className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
+          <Wallet className="h-5 w-5 text-fuchsia-600 dark:text-fuchsia-400" />
+          Nexa &amp; your card
+        </h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Your card is linked to your Nexa wallet. Check what's on it and pay straight from the card —
+          by email or <span className="font-semibold text-slate-700 dark:text-slate-200">@username</span>.
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-fuchsia-50 px-4 py-3 dark:bg-fuchsia-950/40">
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Nexa balance
+          </span>
+          <span className="text-lg font-extrabold text-slate-900 dark:text-white">
+            {nexaBalance === null ? "…" : nexaBalance.toLocaleString()}
+          </span>
+          <span className="text-xs text-slate-400 dark:text-slate-500">
+            {card.number?.slice(-4) ? `card •••• ${card.number.slice(-4)}` : "card"}
+          </span>
+          <span className="ml-auto">
+            <Link to="/nexas-wallet" className="text-xs font-semibold text-emerald-600 underline">
+              Open wallet
+            </Link>
+          </span>
+        </div>
+
+        <form onSubmit={payWithCard} className="mt-4 grid gap-3 sm:grid-cols-[1fr_9rem_8rem_8rem] sm:items-end">
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Pay to (email or @username)
+            </label>
+            <input
+              type="text"
+              value={payTo}
+              onChange={(e) => setPayTo(e.target.value)}
+              placeholder="alice@example.com"
+              className="input mt-1 w-full"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Amount
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={payCoins}
+              onChange={(e) => setPayCoins(e.target.value)}
+              placeholder="0"
+              className="input mt-1 w-full"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Memo
+            </label>
+            <input
+              type="text"
+              value={payMemo}
+              onChange={(e) => setPayMemo(e.target.value)}
+              placeholder="Optional"
+              className="input mt-1 w-full"
+            />
+          </div>
+          <button type="submit" disabled={payBusy} className="btn-primary !px-4 !py-2.5 text-sm">
+            {payBusy ? "Paying…" : "Pay"}
+          </button>
+        </form>
+
+        {payMsg && (
+          <p
+            className={`mt-3 text-xs font-semibold ${
+              payMsg.startsWith("Paid") ? "text-emerald-600" : "text-rose-600"
+            }`}
+          >
+            {payMsg}
+          </p>
+        )}
+        <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+          Nexa payments are separate from CooperCoins — your card balance stays in CC.
+        </p>
+
+        <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Pay another card (by number)
+          </p>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            Enter someone's CooperCard number and the coins come out of your Nexa wallet.{" "}
+            {hasPin && "Your card is PIN-locked, so add your PIN to confirm."}
+          </p>
+          <form onSubmit={payByCardNumber} className="mt-3 grid gap-3 sm:grid-cols-[1fr_8rem_8rem_8rem] sm:items-end">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Card number
+              </label>
+              <input
+                type="text"
+                value={cardNum}
+                onChange={(e) => setCardNum(e.target.value.toUpperCase())}
+                placeholder="CW-XXXX-XXXX-XXXX"
+                className="input mt-1 w-full font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Amount
+              </label>
+              <input
+                type="number"
+                min={1}
+                value={cardNumCoins}
+                onChange={(e) => setCardNumCoins(e.target.value)}
+                placeholder="0"
+                className="input mt-1 w-full"
+              />
+            </div>
+            {hasPin && (
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  PIN
+                </label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={cardNumPin}
+                  onChange={(e) => setCardNumPin(e.target.value.replace(/\D/g, ""))}
+                  placeholder="••••"
+                  className="input mt-1 w-full"
+                />
+              </div>
+            )}
+            <button type="submit" disabled={cardPayBusy} className="btn-secondary !px-4 !py-2.5 text-sm">
+              {cardPayBusy ? "Paying…" : "Pay card"}
+            </button>
+          </form>
+          {cardPayMsg && (
+            <p
+              className={`mt-3 text-xs font-semibold ${
+                cardPayMsg.startsWith("Paid") ? "text-emerald-600" : "text-rose-600"
+              }`}
+            >
+              {cardPayMsg}
+            </p>
+          )}
         </div>
       </div>
 

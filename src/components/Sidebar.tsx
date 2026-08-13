@@ -15,8 +15,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Rocket,
   Search,
   ShieldCheck,
+  Smartphone,
   Store,
   Swords,
   Trophy,
@@ -29,7 +31,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { hasInteractiveAccess } from "../utils/plans";
+import { hasInteractiveAccess, hasMarketAccess } from "../utils/plans";
 import PlanBadge from "./PlanBadge";
 import Avatar from "./Avatar";
 
@@ -40,28 +42,76 @@ interface SidebarProps {
   onCloseMobile: () => void;
 }
 
-const linkItems: { to: string; label: string; icon: LucideIcon; end?: boolean; gated?: boolean }[] = [
-  { to: "/", label: "Home", icon: Home, end: true },
-  { to: "/papers", label: "Past Papers", icon: BookOpen },
-  { to: "/quizzes", label: "Quizzes", icon: FileQuestion },
-  { to: "/notes", label: "Study Notes", icon: FileText },
-  { to: "/groups", label: "School Groups", icon: Users },
-  { to: "/leaderboard", label: "Leaderboard", icon: Trophy },
-  { to: "/people", label: "People", icon: Contact },
-  { to: "/progress", label: "My Progress", icon: LayoutDashboard, gated: true },
-  { to: "/generate", label: "Random Paper", icon: Dices },
-  { to: "/challenge", label: "Challenges", icon: Swords, gated: true },
-  { to: "/progress-report", label: "Progress Report", icon: FileText, gated: true },
-  { to: "/referrals", label: "Refer & Earn", icon: Gift },
-  { to: "/market", label: "Market", icon: Store, gated: true },
-  { to: "/card", label: "My Card", icon: CreditCard, gated: true },
-  { to: "/trading", label: "Trading Post", icon: Handshake, gated: true },
-  { to: "/payments", label: "Payments", icon: Wallet },
-  { to: "/wallet", label: "Nexa Wallet", icon: Coins },
-  { to: "/john-web", label: "John Web", icon: ExternalLink },
-  { to: "/api-docs", label: "API Docs", icon: FileText },
-  { to: "/create-quiz", label: "Create Quiz", icon: Plus },
-  { to: "/search", label: "Search", icon: Search },
+interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  end?: boolean;
+  gated?: boolean;
+  premium?: boolean;
+}
+
+interface NavGroup {
+  /** Section heading. Null for the lead group, which needs no label. */
+  title: string | null;
+  items: NavItem[];
+}
+
+// Grouped so the nav reads as a few short lists rather than one long wall.
+const navGroups: NavGroup[] = [
+  {
+    title: null,
+    items: [
+      { to: "/", label: "Home", icon: Home, end: true },
+      { to: "/search", label: "Search", icon: Search },
+    ],
+  },
+  {
+    title: "Study",
+    items: [
+      { to: "/papers", label: "Past Papers", icon: BookOpen },
+      { to: "/quizzes", label: "Quizzes", icon: FileQuestion },
+      { to: "/notes", label: "Study Notes", icon: FileText },
+      { to: "/generate", label: "Random Paper", icon: Dices },
+      { to: "/create-quiz", label: "Create Quiz", icon: Plus },
+    ],
+  },
+  {
+    title: "Progress",
+    items: [
+      { to: "/progress", label: "My Progress", icon: LayoutDashboard, gated: true },
+      { to: "/progress-report", label: "Progress Report", icon: FileText, gated: true },
+      { to: "/leaderboard", label: "Leaderboard", icon: Trophy },
+      { to: "/challenge", label: "Challenges", icon: Swords, gated: true },
+    ],
+  },
+  {
+    title: "Community",
+    items: [
+      { to: "/groups", label: "School Groups", icon: Users },
+      { to: "/people", label: "People", icon: Contact },
+      { to: "/referrals", label: "Refer & Earn", icon: Gift },
+    ],
+  },
+  {
+    title: "Coins & Card",
+    items: [
+      { to: "/market", label: "Market", icon: Store, gated: true, premium: true },
+      { to: "/card", label: "My Card", icon: CreditCard, gated: true, premium: true },
+      { to: "/trading", label: "Trading Post", icon: Handshake, gated: true },
+      { to: "/wallet", label: "Nexa Wallet", icon: Coins },
+      { to: "/payments", label: "Payments", icon: Wallet },
+    ],
+  },
+  {
+    title: "More",
+    items: [
+      { to: "/install", label: "Get the App", icon: Smartphone },
+      { to: "/apps", label: "Apps", icon: Rocket },
+      { to: "/john-web", label: "John Web", icon: ExternalLink },
+      { to: "/api-docs", label: "API Docs", icon: FileText },
+    ],
+  },
 ];
 
 export default function Sidebar({
@@ -72,10 +122,19 @@ export default function Sidebar({
 }: SidebarProps) {
   const { user, appUser, isAdmin, planId, logout } = useAuth();
   const isFree = !hasInteractiveAccess(planId);
+  const isMarketLocked = !hasMarketAccess(planId);
 
-  const items = [
-    ...linkItems.filter((item) => !isFree || !item.gated),
-    ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: ShieldCheck }] : []),
+  const visible = (item: NavItem) =>
+    (!isFree || !item.gated) && (!isMarketLocked || !item.premium);
+
+  // Drop hidden links, then drop any group left empty by the gating.
+  const groups: NavGroup[] = [
+    ...navGroups
+      .map((group) => ({ ...group, items: group.items.filter(visible) }))
+      .filter((group) => group.items.length > 0),
+    ...(isAdmin
+      ? [{ title: "Admin", items: [{ to: "/admin", label: "Admin", icon: ShieldCheck }] }]
+      : []),
   ];
 
   const buildUpgrade = (mobile: boolean) => {
@@ -105,7 +164,7 @@ export default function Sidebar({
   const buildLinks = (mobile: boolean) => {
     const min = collapsed && !mobile;
     const linkClass = ({ isActive }: { isActive: boolean }) =>
-      `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
+      `flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
         min ? "justify-center px-2" : ""
       } ${
         isActive
@@ -114,19 +173,34 @@ export default function Sidebar({
       }`;
 
     return (
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2" aria-label="Main navigation">
-        {items.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            title={min ? item.label : undefined}
-            onClick={onCloseMobile}
-            className={linkClass}
-          >
-            <item.icon className="h-5 w-5 shrink-0" aria-hidden />
-            {!min && <span>{item.label}</span>}
-          </NavLink>
+      <nav className="flex flex-1 flex-col overflow-y-auto px-3 py-2" aria-label="Main navigation">
+        {groups.map((group, i) => (
+          <div key={group.title ?? "main"} className={i > 0 ? "mt-3" : ""}>
+            {group.title &&
+              (min ? (
+                // Collapsed: a rule stands in for the heading.
+                <div className="mx-auto mb-2 h-px w-6 bg-slate-200 dark:bg-slate-800" aria-hidden />
+              ) : (
+                <p className="px-3 pb-0.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  {group.title}
+                </p>
+              ))}
+            <div className="flex flex-col gap-0.5">
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  title={min ? item.label : undefined}
+                  onClick={onCloseMobile}
+                  className={linkClass}
+                >
+                  <item.icon className="h-5 w-5 shrink-0" aria-hidden />
+                  {!min && <span>{item.label}</span>}
+                </NavLink>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
     );

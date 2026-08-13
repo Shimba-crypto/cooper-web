@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import { hasInteractiveAccess, planName } from "../utils/plans";
 import PlanBadge from "../components/PlanBadge";
 import RedeemCard from "../components/RedeemCard";
+import TrialBanner from "../components/TrialBanner";
 import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import type { QuizResult } from "../types";
@@ -77,6 +78,10 @@ export default function DashboardPage() {
       <p className="mt-1 text-slate-600 dark:text-slate-400">
         Your study progress — stored on this device.
       </p>
+
+      <div className="mt-6">
+        <TrialBanner />
+      </div>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (

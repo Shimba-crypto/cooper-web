@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.cooperweb.app",
+      "sha256_cert_fingerprints": [
+        "4E:06:85:1D:6D:6F:35:84:E6:42:5D:77:E8:CF:31:50:C1:68:B6:E4:0E:FC:46:4E:D6:3F:3B:B3:04:9F:96:DE"
+      ]
+    }
+  }
+]

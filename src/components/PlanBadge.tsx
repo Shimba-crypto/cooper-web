@@ -8,6 +8,7 @@ const styles: Record<PlanId, string> = {
   student: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400",
   teacher_plus: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-400",
   teacher_full: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400",
+  dev: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-400",
 };
 
 export default function PlanBadge({ planId }: { planId: PlanId }) {

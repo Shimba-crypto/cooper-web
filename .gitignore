@@ -4,3 +4,8 @@ dist/
 serviceAccountKey.json
 .env
 *.local
+
+# Android signing — NEVER commit these
+android/*.keystore
+android/keystore-credentials.txt
+android/twa/

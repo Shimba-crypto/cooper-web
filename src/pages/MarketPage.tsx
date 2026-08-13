@@ -4,7 +4,7 @@ import { BadgePercent, Coins, Lock, ShoppingBag, Sparkles } from "lucide-react";
 import { onValue, ref } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
-import { hasInteractiveAccess } from "../utils/plans";
+import { hasMarketAccess } from "../utils/plans";
 import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import RedeemCard from "../components/RedeemCard";
@@ -53,7 +53,7 @@ export default function MarketPage() {
   const [pinError, setPinError] = useState<string | null>(null);
 
   const balance = appUser?.coins ?? 0;
-  const unlocked = appUser?.marketAccess === true || hasInteractiveAccess(planId);
+  const unlocked = appUser?.marketAccess === true || hasMarketAccess(planId);
 
   useEffect(() => {
     if (!user) return;
@@ -163,11 +163,11 @@ export default function MarketPage() {
     );
   }
 
-  if (!hasInteractiveAccess(planId)) {
+  if (!hasMarketAccess(planId)) {
     return (
       <UpgradeGate
-        title="The Market is a Student plan feature"
-        message="Earn CooperCoins from quizzes and spend them on frames, styles, badges and boosts — upgrade to get in."
+        title="The Market is a Teacher Full feature"
+        message="Earn CooperCoins from quizzes and spend them on frames, styles, badges and boosts — the Market and your CooperCard unlock with Teacher Full."
       />
     );
   }

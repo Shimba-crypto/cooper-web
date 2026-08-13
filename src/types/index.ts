@@ -33,12 +33,18 @@ export interface Quiz {
 }
 
 export type UserRole = "user" | "admin";
-export type PlanId = "admin" | "free" | "student" | "student_plus" | "teacher_plus" | "teacher_full";
+export type PlanId = "admin" | "free" | "student" | "student_plus" | "teacher_plus" | "teacher_full" | "dev";
 
 export interface UserPlan {
   id: PlanId;
   activatedAt: number;
   claimedVia?: string;
+  /** Epoch ms. Set for time-limited grants (e.g. the Auther Student Plus trial). Absent = permanent. */
+  expiresAt?: number;
+  /** Marks a promotional grant so it can be shown/guarded separately from a paid plan. */
+  kind?: "student_plus_trial";
+  /** YYYY-MM-DD of the last grant, used to stop repeat logins stacking extensions. */
+  grantedOn?: string;
 }
 
 export interface AppUser {
@@ -263,7 +269,7 @@ export interface ReferralCode {
   createdAt: number;
 }
 
-export type RedeemCodeType = "gift" | "promo" | "discount" | "pack" | "market" | "coins";
+export type RedeemCodeType = "gift" | "promo" | "discount" | "pack" | "market" | "coins" | "dev_plan";
 
 export interface RedeemCode {
   code: string;

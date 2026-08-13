@@ -10,11 +10,12 @@
 // Admin endpoints require header: x-api-key: <ADMIN_API_KEY>
 // Service account: env SERVICE_ACCOUNT_JSON (raw JSON) or file ./serviceAccountKey.json
 import { readFileSync, existsSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import express from "express";
 import cors from "cors";
 import { XMLParser, XMLBuilder } from "fast-xml-parser";
 import { initializeApp, cert } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { getDatabase, ServerValue } from "firebase-admin/database";
 import { getMessaging } from "firebase-admin/messaging";
 
@@ -668,6 +669,13 @@ app.post("/api/redeem", async (req, res) => {
         claimedVia: `redeem:${code}`,
       };
     }
+    if (data.type === "dev_plan") {
+      updates[`users/${uid}/plan`] = {
+        id: "dev",
+        activatedAt: Date.now(),
+        claimedVia: `redeem:${code}`,
+      };
+    }
     if (data.type === "discount") {
       updates[`users/${uid}/discount`] = {
         percent: data.discountPercent,
@@ -707,6 +715,12 @@ app.post("/api/redeem", async (req, res) => {
       return res.json({
         ok: true,
         message: `Plan activated! ${planName} is now yours.`,
+      });
+    }
+    if (data.type === "dev_plan") {
+      return res.json({
+        ok: true,
+        message: "Developer plan activated — full access, gifted by an admin.",
       });
     }
     if (data.type === "discount") {
@@ -1252,6 +1266,81 @@ app.post("/api/card/pin", async (req, res) => {
   }
 });
 
+// POST /api/card/pay  body: { uid, cardNumber, coins, memo?, pin? }
+// Pay NexaCoin to the owner of a CooperCard number (the card's QR encodes its
+// number, so this is the "scan card → pay" flow). Debits the payer's Nexa
+// wallet. If the payer has a card PIN set, it must be supplied.
+app.post("/api/card/pay", async (req, res) => {
+  const { uid, cardNumber, coins, memo, pin } = req.body ?? {};
+  const c = Number(coins);
+  const number = String(cardNumber ?? "").trim().toUpperCase();
+  if (!uid || !number || !Number.isFinite(c) || c <= 0) {
+    return res.status(400).json({ error: "Need uid, cardNumber and a positive coin amount" });
+  }
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const payer = userSnap.val();
+    if (!payer || !payer.email) return res.status(404).json({ error: "User or email not found" });
+    const snap = await db
+      .ref("users")
+      .orderByChild("card/number")
+      .equalTo(number)
+      .limitToFirst(1)
+      .once("value");
+    const entries = snap.val();
+    if (!entries) return res.status(404).json({ error: "No card with that number was found" });
+    const targetUid = Object.keys(entries)[0];
+    const target = entries[targetUid];
+    if (targetUid === uid) return res.status(400).json({ error: "You cannot pay your own card" });
+    const payerPin = String(payer.cardPin ?? "");
+    if (payerPin && String(pin ?? "") !== payerPin) {
+      return res.status(401).json({ error: "Card is PIN-locked — enter your PIN to pay" });
+    }
+    const { status, data } = await nexasFetch("/api/merchant/transfer", {
+      method: "POST",
+      merchant: true,
+      body: {
+        from: payer.email,
+        to: target.email,
+        coins: c,
+        memo: memo ?? `Card ${number} payment`,
+      },
+    });
+    if (status === 200) {
+      for (const w of [payer.email, target.email]) {
+        nexasFetch(`/api/wallet?email=${encodeURIComponent(w)}`)
+          .then((r) => (r.status === 200 ? mirroWallet(w, r.data) : null))
+          .catch(() => {});
+      }
+      await notifyUser(targetUid, {
+        type: "payment",
+        title: "Card payment received",
+        message: `${payer.displayName ?? payer.email} paid ${c} NexaCoin to your card (${number}).`,
+        link: "/nexas-wallet",
+      });
+    }
+    res.status(status).json(data ?? { error: "Card payment failed" });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/exchange-rate  body: { rate } — admin only.
+// Sets the CC ↔ NexaCoin exchange rate (1 NexaCoin = N CooperCoins).
+app.post("/api/admin/exchange-rate", requireAdmin, async (req, res) => {
+  const rate = Number(req.body?.rate);
+  if (!Number.isFinite(rate) || rate < 1 || rate > 10000) {
+    return res.status(400).json({ error: "Rate must be between 1 and 10000" });
+  }
+  try {
+    await db.ref("nexas/ccPerNexa").set(rate);
+    ccPerNexaCache = { rate, at: 0 };
+    res.json({ ok: true, rate });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/payments/confirm  body: { uid, paymentId, status: "confirmed" | "rejected" }
 app.post("/api/payments/confirm", requireAdmin, async (req, res) => {
   const { uid, paymentId, status } = req.body ?? {};
@@ -1610,6 +1699,7 @@ app.post("/api/dpo/callback", express.text({ type: () => true }), async (req, re
 });
 
 // ---------- NexasPay (ZamAI unified payments / NexasCoin) ----------
+const JOHNWEB_BASE = process.env.JOHNWEB_URL ?? "https://johnweb-qncu.onrender.com";
 const NEXAS = {
   baseUrl: process.env.NEXAS_BASE_URL ?? "https://nexas-pay.onrender.com",
   merchantKey: process.env.NEXAS_MERCHANT_KEY ?? "np_9txq8poxi6_xwof2mc7ds",
@@ -1620,6 +1710,22 @@ const NEXAS_ENABLED = !!NEXAS.merchantKey;
 const NEXAS_WEBHOOK_TOKEN =
   process.env.NEXAS_WEBHOOK_TOKEN ?? "nxw_0cb4e0db04c94c760a6e42bf996549fd";
 const NEXAS_COIN_PRICES = { student: 50, teacher_full: 200 };
+// CC ↔ NexaCoin exchange rate: 1 NexaCoin == CC_PER_NEXA CooperCoins.
+// Admin-tunable at runtime via POST /api/admin/exchange-rate (stored in DB).
+const CC_PER_NEXA = 50;
+let ccPerNexaCache = { rate: null, at: 0 };
+async function ccPerNexa() {
+  const now = Date.now();
+  if (ccPerNexaCache.rate && now - ccPerNexaCache.at < 30000) return ccPerNexaCache.rate;
+  try {
+    const snap = await db.ref("nexas/ccPerNexa").once("value");
+    const v = Number(snap.val());
+    ccPerNexaCache = { rate: Number.isFinite(v) && v > 0 ? v : CC_PER_NEXA, at: now };
+  } catch {
+    ccPerNexaCache = { rate: CC_PER_NEXA, at: now };
+  }
+  return ccPerNexaCache.rate;
+}
 let nexasRateCache = { rate: null, at: 0 };
 
 async function nexasRate() {
@@ -1711,13 +1817,14 @@ setInterval(nexasSync, 60_000);
 // GET /api/nexas/config — public client config: whether NexasPay is wired, live rate
 app.get("/api/nexas/config", async (_req, res) => {
   try {
-    const rate = await nexasRate();
+    const [rate, cc] = await Promise.all([nexasRate(), ccPerNexa()]);
     res.json({
       enabled: NEXAS_ENABLED,
       baseUrl: NEXAS.baseUrl,
       merchantId: NEXAS.merchantId,
       merchantNumber: NEXAS.merchantNumber,
       coinPrices: NEXAS_COIN_PRICES,
+      cc: { ccPerNexa: cc },
       plans: PLAN_PRICES,
       rate,
     });
@@ -1869,25 +1976,123 @@ app.post("/api/nexas/credit", async (req, res) => {
   }
 });
 
-// POST /api/nexas/transfer  body: { uid, toEmail, coins, memo? }
-// Move NexaCoin from the signed-in user to another email (QR / @username payments).
-app.post("/api/nexas/transfer", async (req, res) => {
-  const { uid, toEmail, coins, memo } = req.body ?? {};
-  const c = Number(coins);
-  if (!uid || !toEmail || !Number.isFinite(c) || c <= 0) {
-    return res.status(400).json({ error: "Need uid, toEmail and a positive coin amount" });
+// POST /api/nexas/exchange  body: { uid, direction: "in"|"out", amount }
+// Bridge CooperCoins ↔ NexaCoin. direction "in" = spend CC to credit your Nexa
+// wallet ("price" amount is CC); direction "out" = sell NexaCoin from your
+// wallet into CC ("amount" is NexaCoin). Rate is server-governed (CC_PER_NEXA).
+app.post("/api/nexas/exchange", async (req, res) => {
+  const { uid, direction, amount } = req.body ?? {};
+  const amt = Number(amount);
+  if (!uid || !["in", "out"].includes(direction) || !Number.isFinite(amt) || amt <= 0) {
+    return res.status(400).json({ error: "Need uid, direction (in|out) and a positive amount" });
   }
   try {
     const userSnap = await db.ref(`users/${uid}`).once("value");
     const user = userSnap.val();
     if (!user || !user.email) return res.status(404).json({ error: "User or email not found" });
+    const email = user.email;
+    const ccAmt = Math.floor(amt * 100) / 100;
+
+    if (direction === "in") {
+      const rate = await ccPerNexa();
+      const ccSpent = Math.round(ccAmt * 100) / 100;
+      const nexaReceived = Math.round((ccSpent / rate) * 100) / 100;
+      if (nexaReceived < 1) {
+        return res.status(400).json({ error: `Minimum exchange is 1 NexaCoin (${rate} CC).` });
+      }
+      const balance = Number(user.coins) || 0;
+      if (balance < ccSpent) {
+        return res.status(400).json({ error: "Not enough CooperCoins — earn more with quizzes." });
+      }
+      const { status, data } = await nexasFetch("/api/merchant/credit", {
+        method: "POST",
+        merchant: true,
+        body: { email, coins: nexaReceived, memo: `Exchanged ${ccSpent} CC → NexaCoin` },
+      });
+      if (status !== 200) return res.status(status).json(data ?? { error: "Nexa top-up failed" });
+      const txId = `xchg-${Date.now()}-${randomUUID().slice(0, 6)}`;
+      await db.ref().update({
+        [`users/${uid}/coins`]: ServerValue.increment(-ccSpent),
+        [`coinsLedger/${uid}/${txId}`]: {
+          amount: -ccSpent,
+          type: "exchange_in",
+          at: Date.now(),
+          ref: `nexa:${nexaReceived}`,
+        },
+      });
+      mirroWallet(email, data).catch(() => {});
+      res.json({
+        ok: true,
+        sent: nexaReceived,
+        spentCc: ccSpent,
+        balance: Math.round((balance - ccSpent) * 100) / 100,
+        ccPerNexa: rate,
+      });
+      return;
+    }
+
+    const wallet = await nexasFetch(`/api/wallet?email=${encodeURIComponent(email)}`);
+    const avail = Number(wallet.data?.balance ?? 0);
+    if (wallet.status !== 200 || avail < ccAmt) {
+      return res.status(400).json({ error: "Not enough NexaCoin in your wallet." });
+    }
+    const { status, data } = await nexasFetch("/api/wallet/sell", {
+      method: "POST",
+      body: { email, coins: ccAmt },
+    });
+    if (status !== 200) return res.status(status).json(data ?? { error: "Nexa sell order failed" });
+    const rate = await ccPerNexa();
+    const ccReceived = Math.round(ccAmt * rate);
+    const txId = `xchg-${Date.now()}-${randomUUID().slice(0, 6)}`;
+    await db.ref().update({
+      [`users/${uid}/coins`]: ServerValue.increment(ccReceived),
+      [`coinsLedger/${uid}/${txId}`]: {
+        amount: ccReceived,
+        type: "exchange_out",
+        at: Date.now(),
+        ref: `nexa:${ccAmt}`,
+      },
+    });
+    if (data) mirroWallet(email, data).catch(() => {});
+    res.json({
+      ok: true,
+      sold: ccAmt,
+      receivedCc: ccReceived,
+      balance: (Number(user.coins) || 0) + ccReceived,
+      ccPerNexa: rate,
+    });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// POST /api/nexas/transfer  body: { uid, toEmail?, toUid?, coins, memo? }
+// Move NexaCoin from the signed-in user to another wallet (QR / @username
+// payments). Accepts the recipient as an email OR a CooperWeb uid (resolved
+// server-side so emails stay private in the /api/people directory).
+app.post("/api/nexas/transfer", async (req, res) => {
+  const { uid, toEmail, toUid, coins, memo } = req.body ?? {};
+  const c = Number(coins);
+  if (!uid || (!toEmail && !toUid) || !Number.isFinite(c) || c <= 0) {
+    return res.status(400).json({ error: "Need uid, toEmail or toUid, and a positive coin amount" });
+  }
+  try {
+    const userSnap = await db.ref(`users/${uid}`).once("value");
+    const user = userSnap.val();
+    if (!user || !user.email) return res.status(404).json({ error: "User or email not found" });
+    let target = String(toEmail ?? "");
+    if (toUid) {
+      const targetUser = (await db.ref(`users/${toUid}`).once("value")).val();
+      if (!targetUser || !targetUser.email) return res.status(404).json({ error: "Recipient has no Nexa wallet linked" });
+      target = targetUser.email;
+    }
     const { status, data } = await nexasFetch("/api/merchant/transfer", {
       method: "POST",
       merchant: true,
-      body: { from: user.email, to: toEmail, coins: c, memo: memo ?? "CooperWeb transfer" },
+      body: { from: user.email, to: target, coins: c, memo: memo ?? "CooperWeb transfer" },
     });
     if (status === 200) {
-      for (const w of [user.email, toEmail]) {
+      for (const w of [user.email, target]) {
         nexasFetch(`/api/wallet?email=${encodeURIComponent(w)}`)
           .then((r) => (r.status === 200 ? mirroWallet(w, r.data) : null))
           .catch(() => {});
@@ -1931,6 +2136,56 @@ app.post("/api/nexas/profile", async (req, res) => {
     res.status(status).json(data ?? { error: "Profile registration failed" });
   } catch (err) {
     res.status(502).json({ error: err.message });
+  }
+});
+
+// GET /api/globalsearch?q=... — public search across the whole ecosystem:
+// CooperWeb papers/quizzes/notes/people (Firebase) + the John Web library
+// (proxy). This is the "One Route" search API used by the Apps hub.
+app.get("/api/globalsearch", async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
+  if (q.length < 2) return res.json({ query: q, papers: [], quizzes: [], notes: [], people: [], johnweb: null });
+  const needle = q.toLowerCase();
+  const matches = (text) => String(text ?? "").toLowerCase().includes(needle);
+  try {
+    const [papersSnap, quizzesSnap, notesSnap, usersSnap] = await Promise.all([
+      db.ref("papers").once("value"),
+      db.ref("quizzes").once("value"),
+      db.ref("notes").once("value"),
+      db.ref("users").once("value"),
+    ]);
+    const papers = Object.values(papersSnap.val() ?? {})
+      .filter((p) => matches(p.title) || matches(p.subject) || matches(p.year))
+      .slice(0, 8);
+    const quizzes = Object.values(quizzesSnap.val() ?? {})
+      .filter((q) => matches(q.title) || matches(q.subject))
+      .slice(0, 8);
+    const notes = Object.values(notesSnap.val() ?? {})
+      .filter((n) => matches(n.title) || matches(n.subject) || matches(n.content))
+      .slice(0, 8);
+    const people = Object.entries(usersSnap.val() ?? {})
+      .filter(([, u]) => matches(u.displayName))
+      .slice(0, 8)
+      .map(([uid, u]) => ({
+        uid,
+        displayName: u.displayName,
+        avatarUrl: u.avatarUrl ?? "",
+        planId: u.plan?.id ?? "free",
+        role: u.role ?? "user",
+      }));
+    let johnweb = null;
+    try {
+      const jwRes = await fetch(
+        `${JOHNWEB_BASE}/api/public/search?q=${encodeURIComponent(q)}`,
+        { signal: AbortSignal.timeout(6000) },
+      );
+      if (jwRes.ok) johnweb = await jwRes.json();
+    } catch {
+      johnweb = null;
+    }
+    res.json({ query: q, papers, quizzes, notes, people, johnweb });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -2089,6 +2344,204 @@ app.get("/api/nexas/ledger", async (_req, res) => {
     res.json({ count: entries.length, updatedAt: updatedAt ?? null, transactions: entries });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------- SSO: Login with Auther ----------
+// Auther is the in-house identity provider. The browser is sent to Auther to
+// authorize; Auther redirects back here with a one-time code; we exchange that
+// server-to-server, upsert the matching Firebase user, and hand the SPA a
+// Firebase custom token to sign in with.
+//
+//   GET /api/auth/sso           -> redirect to Auther (or ?token= direct login)
+//   GET /api/auth/sso/callback  -> exchange code -> custom token -> back to app
+const AUTHER_URL = process.env.AUTHER_URL ?? "https://auther-zblr.onrender.com";
+const AUTHER_CLIENT_ID = process.env.AUTHER_CLIENT_ID ?? "cooperweb";
+// Where the React app lives (Firebase Hosting), i.e. where we send sso_token.
+const APP_URL = (process.env.APP_URL ?? "https://chikondi-dot.web.app").replace(/\/+$/, "");
+// Signing key for the CSRF `state` value. Stateless so it survives restarts and
+// works across instances; falls back to a per-boot secret if nothing is set.
+const SSO_STATE_SECRET =
+  process.env.SSO_STATE_SECRET ?? ADMIN_API_KEY ?? randomBytes(32).toString("hex");
+const SSO_STATE_TTL_MS = 10 * 60 * 1000;
+const TRIAL_DAYS = 14;
+const AUTHER_TIMEOUT_MS = 20000;
+
+// Server-side mirror of src/utils/plans.ts PLAN_LEVEL.
+const PLAN_LEVEL_SERVER = {
+  free: 0,
+  student_plus: 1,
+  student: 1,
+  teacher_plus: 1,
+  teacher_full: 2,
+  dev: 50,
+  admin: 99,
+};
+
+const signState = (payload) =>
+  createHmac("sha256", SSO_STATE_SECRET).update(payload).digest("base64url");
+
+const makeState = () => {
+  const payload = `${Date.now()}.${randomBytes(8).toString("base64url")}`;
+  return `${payload}.${signState(payload)}`;
+};
+
+const verifyState = (state) => {
+  if (typeof state !== "string") return false;
+  const idx = state.lastIndexOf(".");
+  if (idx < 0) return false;
+  const payload = state.slice(0, idx);
+  const sig = state.slice(idx + 1);
+  const expected = signState(payload);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
+  const ts = Number(payload.split(".")[0]);
+  return Number.isFinite(ts) && Date.now() - ts < SSO_STATE_TTL_MS;
+};
+
+const ssoFail = (res, reason) =>
+  res.redirect(`${APP_URL}/login?error=sso_failed${reason ? `&reason=${encodeURIComponent(reason)}` : ""}`);
+
+/**
+ * Find the Firebase user for an Auther identity, creating it on first login.
+ * Local users are keyed by email; the generated password is random and never
+ * surfaced, so the account is only reachable through Auther (or a reset).
+ */
+const ssoLocalUser = async ({ email, name }) => {
+  if (!email) return null;
+  const adminAuth = getAuth();
+  const displayName = name || email.split("@")[0];
+  let record;
+  try {
+    record = await adminAuth.getUserByEmail(email);
+  } catch (err) {
+    if (err.code !== "auth/user-not-found") throw err;
+    record = await adminAuth.createUser({
+      email,
+      emailVerified: true, // Auther already owns verification
+      displayName,
+      password: randomBytes(24).toString("hex"),
+    });
+  }
+
+  // Mirror the RTDB records the SPA signup path creates.
+  const userRef = db.ref(`users/${record.uid}`);
+  const snap = await userRef.once("value");
+  if (!snap.exists()) {
+    const createdAt = Date.now();
+    await userRef.set({
+      uid: record.uid,
+      email,
+      displayName,
+      role: "user",
+      createdAt,
+    });
+    await db.ref(`profiles/${record.uid}`).set({
+      uid: record.uid,
+      displayName,
+      bio: "",
+      createdAt,
+    });
+  }
+  return record;
+};
+
+/**
+ * Student Plus, free for two weeks, on Auther login.
+ * Never downgrades a live paid plan, and only grants once per day so repeat
+ * logins cannot stack extensions.
+ */
+const grantStudentPlus = async (uid) => {
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const planRef = db.ref(`users/${uid}/plan`);
+  const existing = (await planRef.once("value")).val();
+
+  if (existing) {
+    const live = !existing.expiresAt || existing.expiresAt > now;
+    const level = PLAN_LEVEL_SERVER[existing.id] ?? 0;
+    // A real plan they already hold outranks the promo — leave it alone.
+    if (live && level >= PLAN_LEVEL_SERVER.student && existing.kind !== "student_plus_trial") {
+      return { skipped: "has_plan" };
+    }
+    // Already granted today — don't stack another 14 days on.
+    if (existing.kind === "student_plus_trial" && existing.grantedOn === today) {
+      return { skipped: "granted_today", expiresAt: existing.expiresAt };
+    }
+  }
+
+  // Extend from now, but never shorten an existing trial.
+  const expiresAt = Math.max(now + TRIAL_DAYS * 24 * 60 * 60 * 1000, existing?.expiresAt ?? 0);
+  await planRef.set({
+    id: "student_plus",
+    activatedAt: now,
+    claimedVia: "auther",
+    kind: "student_plus_trial",
+    grantedOn: today,
+    expiresAt,
+  });
+  await notifyUser(uid, {
+    type: "success",
+    title: "Student Plus unlocked",
+    message: `Welcome via Auther! Student Plus is yours free until ${new Date(expiresAt).toDateString()}.`,
+    link: "/dashboard",
+  });
+  return { expiresAt };
+};
+
+// Completes login for an Auther identity and bounces back to the SPA.
+const finishSso = async (res, autherUser) => {
+  const record = await ssoLocalUser(autherUser);
+  if (!record) return ssoFail(res, "no_user");
+  await grantStudentPlus(record.uid);
+  const customToken = await getAuth().createCustomToken(record.uid);
+  return res.redirect(`${APP_URL}/login?sso_token=${encodeURIComponent(customToken)}`);
+};
+
+app.get("/api/auth/sso", async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/sso/callback`;
+    const url =
+      `${AUTHER_URL}/sso/authorize?client_id=${encodeURIComponent(AUTHER_CLIENT_ID)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&state=${encodeURIComponent(makeState())}`;
+    return res.redirect(url);
+  }
+
+  // Direct login with an Auther token already in hand.
+  try {
+    const r = await fetch(`${AUTHER_URL}/api/auth/me`, {
+      headers: { "X-Auth-Token": String(token) },
+      signal: AbortSignal.timeout(AUTHER_TIMEOUT_MS),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.user?.email) return ssoFail(res, "token_rejected");
+    return await finishSso(res, d.user);
+  } catch {
+    return ssoFail(res, "auther_unreachable");
+  }
+});
+
+app.get("/api/auth/sso/callback", async (req, res) => {
+  const { code, state } = req.query;
+  if (!code) return ssoFail(res, "no_code");
+  if (!verifyState(state)) return ssoFail(res, "bad_state");
+
+  try {
+    const r = await fetch(`${AUTHER_URL}/sso/exchange`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+      signal: AbortSignal.timeout(AUTHER_TIMEOUT_MS),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok || !d.user?.email) return ssoFail(res, "exchange_failed");
+    return await finishSso(res, d.user);
+  } catch {
+    return ssoFail(res, "auther_unreachable");
   }
 });
 

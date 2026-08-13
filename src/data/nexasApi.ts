@@ -8,6 +8,7 @@ export interface NexasConfig {
   merchantId: string;
   merchantNumber: string;
   coinPrices: Record<string, number>;
+  cc?: { ccPerNexa: number };
   plans: Record<string, number>;
   rate: number;
 }
@@ -153,17 +154,39 @@ export const nexasCharge = async (uid: string, planId: string): Promise<NexasCha
 };
 
 export const nexasTransfer = async (
-  uid: string,
-  toEmail: string,
-  coins: number,
-  memo?: string,
+  options: {
+    uid: string;
+    toEmail?: string;
+    toUid?: string;
+    coins: number;
+    memo?: string;
+  },
 ): Promise<{ ok?: boolean; error?: string; balance?: number }> => {
   const r = await fetch(`${API_URL}/api/nexas/transfer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uid, toEmail, coins, memo }),
+    body: JSON.stringify(options),
   });
   return json(r);
+};
+
+export const nexasExchange = async (
+  uid: string,
+  direction: "in" | "out",
+  amount: number,
+): Promise<{ ok?: boolean; error?: string; balance?: number; sent?: number; receivedCc?: number; spentCc?: number }> => {
+  try {
+    const r = await fetch(`${API_URL}/api/nexas/exchange`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid, direction, amount }),
+    });
+    const data = await r.json();
+    if (!r.ok) return { ok: false, error: data?.error ?? "Exchange failed." };
+    return data;
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Exchange failed." };
+  }
 };
 
 export const nexasRegisterProfile = async (

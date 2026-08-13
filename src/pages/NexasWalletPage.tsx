@@ -7,6 +7,7 @@ import {
   CreditCard,
   QrCode,
   RefreshCw,
+  Repeat,
   Send,
   UserPlus,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import {
   nexasBuy,
   nexasCharge,
   nexasConfig,
+  nexasExchange,
   nexasLookupUsername,
   nexasMarkRead,
   nexasNotifications,
@@ -33,7 +35,7 @@ const fmtNumber = (n: number) =>
   n.toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
 
 export default function NexasWalletPage() {
-  const { user } = useAuth();
+  const { user, appUser } = useAuth();
   const [cfg, setCfg] = useState<NexasConfig | null>(null);
   const [wallet, setWallet] = useState<NexasWalletData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,6 +59,11 @@ export default function NexasWalletPage() {
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
   const [myUsername, setMyUsername] = useState<string | null>(null);
+
+  const [coCcAmount, setCoCcAmount] = useState("50");
+  const [coNexaAmount, setCoNexaAmount] = useState("1");
+  const [exBusy, setExBusy] = useState(false);
+  const [exMsg, setExMsg] = useState<string | null>(null);
 
   const [notifs, setNotifs] = useState<any[]>([]);
 
@@ -176,7 +183,7 @@ export default function NexasWalletPage() {
         if (!prof?.email) throw new Error(`No user found for ${target}`);
         target = prof.email;
       }
-      const res = await nexasTransfer(user.uid, target, c, memo.trim() || undefined);
+      const res = await nexasTransfer({ uid: user.uid, toEmail: target, coins: c, memo: memo.trim() || undefined });
       if (res.ok) {
         setSendMsg(`Sent ${fmtNumber(c)} NexaCoin to ${target}.`);
         setToEmail("");
@@ -216,6 +223,50 @@ export default function NexasWalletPage() {
   };
 
   const history = Array.isArray(wallet?.history) ? wallet.history : [];
+
+  const exchangeIn = async (e: FormEvent) => {
+    e.preventDefault();
+    const cc = Number(coCcAmount);
+    if (!cc || cc <= 0) return;
+    setExBusy(true);
+    setExMsg(null);
+    try {
+const res = await nexasExchange(user.uid, "in", cc);
+      if (res.ok) {
+        setExMsg(`Exchanged ${fmtNumber(cc)} CC → ${fmtNumber(res.sent ?? 0)} NexaCoin.`);
+        setCoCcAmount("");
+        await refresh();
+      } else {
+        setExMsg(res.error ?? "Exchange failed.");
+      }
+    } catch (err) {
+      setExMsg(`Exchange failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setExBusy(false);
+    }
+  };
+
+  const exchangeOut = async (e: FormEvent) => {
+    e.preventDefault();
+    const nx = Number(coNexaAmount);
+    if (!nx || nx <= 0) return;
+    setExBusy(true);
+    setExMsg(null);
+    try {
+      const res = await nexasExchange(user.uid, "out", nx);
+      if (res.ok) {
+        setExMsg(`Sold ${fmtNumber(nx)} NexaCoin → ${fmtNumber(res.receivedCc ?? 0)} CC.`);
+        setCoNexaAmount("");
+        await refresh();
+      } else {
+        setExMsg(res.error ?? "Exchange failed.");
+      }
+    } catch (err) {
+      setExMsg(`Exchange failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setExBusy(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
@@ -286,6 +337,52 @@ export default function NexasWalletPage() {
           </button>
         </form>
         {buyMsg && <p className={`mt-2 text-xs ${buyOk ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{buyMsg}</p>}
+      </div>
+
+      <div className="mt-6 card p-5">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+          <Repeat className="h-5 w-5 text-fuchsia-600" /> Exchange with CooperCoins
+        </h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Swap between CC and NexaCoin at the fixed rate —{" "}
+          <span className="font-semibold text-slate-700 dark:text-slate-200">
+            {fmtNumber(cfg.cc?.ccPerNexa ?? 50)} CC = 1 NexaCoin
+          </span>
+          . You have <span className="font-semibold">{fmtNumber(appUser?.coins ?? 0)} CC</span>.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <form onSubmit={exchangeIn} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">CC → NexaCoin</p>
+            <div className="mt-2 flex items-end gap-2">
+              <label className="block flex-1">
+                <span className="label">CooperCoins</span>
+                <input className="input" type="number" min={1} value={coCcAmount} onChange={(e) => setCoCcAmount(e.target.value)} placeholder="50" />
+              </label>
+              <button type="submit" disabled={exBusy} className="btn-primary disabled:opacity-60">
+                {exBusy ? "…" : "Exchange"}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Gives ≈ {fmtNumber(Number(coCcAmount) / (cfg.cc?.ccPerNexa ?? 50))} NexaCoin
+            </p>
+          </form>
+          <form onSubmit={exchangeOut} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">NexaCoin → CC</p>
+            <div className="mt-2 flex items-end gap-2">
+              <label className="block flex-1">
+                <span className="label">NexaCoin</span>
+                <input className="input" type="number" min={1} value={coNexaAmount} onChange={(e) => setCoNexaAmount(e.target.value)} placeholder="1" />
+              </label>
+              <button type="submit" disabled={exBusy} className="btn-secondary disabled:opacity-60">
+                {exBusy ? "…" : "Sell"}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Gives ≈ {fmtNumber(Number(coNexaAmount) * (cfg.cc?.ccPerNexa ?? 50))} CC
+            </p>
+          </form>
+        </div>
+        {exMsg && <p className={`mt-2 text-xs ${exMsg.includes("Exchanged") || exMsg.includes("Sold") ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{exMsg}</p>}
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">

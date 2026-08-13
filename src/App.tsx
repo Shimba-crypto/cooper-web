@@ -32,6 +32,8 @@ import ProgressReportPage from "./pages/ProgressReportPage";
 import PaymentsPage from "./pages/PaymentsPage";
 import NexasWalletPage from "./pages/NexasWalletPage";
 import JohnWebPage from "./pages/JohnWebPage";
+import AppsPage from "./pages/AppsPage";
+import InstallPage from "./pages/InstallPage";
 import ApiDocsPage from "./pages/ApiDocsPage";
 import PeoplePage from "./pages/PeoplePage";
 import MarketPage from "./pages/MarketPage";
@@ -96,6 +98,8 @@ export default function App() {
               <Route path="/payments" element={<PaymentsPage />} />
               <Route path="/wallet" element={<NexasWalletPage />} />
               <Route path="/john-web" element={<JohnWebPage />} />
+              <Route path="/apps" element={<AppsPage />} />
+              <Route path="/install" element={<InstallPage />} />
               <Route path="/api-docs" element={<ApiDocsPage />} />
               <Route path="/people" element={<PeoplePage />} />
               <Route path="/market" element={<MarketPage />} />
