@@ -64,6 +64,11 @@ export function hasInteractiveAccess(planId: PlanId): boolean {
   return PLAN_LEVEL[planId] >= PLAN_LEVEL.student;
 }
 
+/** Teacher Full and above: the CooperCoins Market and the CooperCard. */
+export function hasMarketAccess(planId: PlanId): boolean {
+  return PLAN_LEVEL[planId] >= PLAN_LEVEL.teacher_full;
+}
+
 /** Teacher Full and above: the CooperCoins Market and your CooperCard. */
 export function hasMarketAccess(planId: PlanId): boolean {
   return PLAN_LEVEL[planId] >= PLAN_LEVEL.teacher_full;
