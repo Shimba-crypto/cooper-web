@@ -39,6 +39,7 @@ initializeApp({ credential: cert(serviceAccount), databaseURL: DATABASE_URL });
 const db = getDatabase();
 
 const app = express();
+app.set("trust proxy", true); // Render terminates TLS; keep req.protocol honest (https)
 app.use(cors());
 app.use(express.json());
 
