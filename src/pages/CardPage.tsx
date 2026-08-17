@@ -5,7 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { onValue, ref, set } from "firebase/database";
 import { db } from "../firebase";
 import { useAuth } from "../context/AuthContext";
-import { hasInteractiveAccess } from "../utils/plans";
+import { hasMarketAccess } from "../utils/plans";
 import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/Toast";
@@ -158,11 +158,11 @@ export default function CardPage() {
     );
   }
 
-  if (!hasInteractiveAccess(planId)) {
+  if (!hasMarketAccess(planId)) {
     return (
       <UpgradeGate
-        title="Your CooperCard is a Student plan feature"
-        message="Your card levels up with the CooperCoins you earn from quizzes. Upgrade to unlock your card."
+        title="Your CooperCard is a Teacher Full feature"
+        message="Your card levels up with the CooperCoins you earn from quizzes. Market and your CooperCard unlock with Teacher Full."
       />
     );
   }

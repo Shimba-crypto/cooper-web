@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { API_URL } from "./config";
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import HomePage from "./pages/HomePage";
@@ -48,6 +49,19 @@ function AnalyticsTracker() {
   return null;
 }
 
+// Keep the API warm: free Render instances spin down after ~15 min of
+// inactivity, costing users a 50s cold start. Anyone with the site open pings
+// the API every 10 minutes, fire-and-forget.
+function Heartbeat() {
+  useEffect(() => {
+    const ping = () => fetch(`${API_URL}/api/health`).catch(() => {});
+    ping();
+    const timer = setInterval(ping, 10 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return null;
+}
+
 export default function App() {
   const { theme, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useLocalStorage<boolean>("cooperweb:sidebar-collapsed", false);
@@ -56,6 +70,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AnalyticsTracker />
+      <Heartbeat />
       <div className="flex min-h-screen flex-col">
         <Navbar theme={theme} toggleTheme={toggleTheme} onMenuClick={() => setMobileOpen(true)} />
         <div className="flex flex-1">

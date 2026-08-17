@@ -6,7 +6,7 @@ import { db } from "../firebase";
 import { usePapers } from "../hooks/usePapers";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useAuth } from "../context/AuthContext";
-import { hasInteractiveAccess, planName } from "../utils/plans";
+import { hasInteractiveAccess, hasMarketAccess, planName } from "../utils/plans";
 import PlanBadge from "../components/PlanBadge";
 import RedeemCard from "../components/RedeemCard";
 import TrialBanner from "../components/TrialBanner";
@@ -137,9 +137,15 @@ export default function DashboardPage() {
           </div>
           <div className="min-w-0">
             <h2 className="font-bold text-slate-900 dark:text-white">Your CooperCard</h2>
-            <p className="truncate text-sm text-slate-500 dark:text-slate-400">
-              {appUser?.card?.number ?? "Tap to issue your digital card"}
-            </p>
+            {hasMarketAccess(planId) ? (
+              <p className="truncate text-sm text-slate-500 dark:text-slate-400">
+                {appUser?.card?.number ?? "Tap to issue your digital card"}
+              </p>
+            ) : (
+              <p className="truncate text-sm text-slate-500 dark:text-slate-400">
+                Market & Card unlock with Teacher Full
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2 dark:bg-amber-950/40">
@@ -149,14 +155,20 @@ export default function DashboardPage() {
           </span>
           <span className="text-xs font-semibold text-amber-600 dark:text-amber-500">CC</span>
         </div>
-        <div className="flex items-center gap-2">
-          <Link to="/card" className="btn-secondary !px-4 !py-1.5 text-sm">
-            <CreditCard className="h-4 w-4" /> My card
+        {hasMarketAccess(planId) ? (
+          <div className="flex items-center gap-2">
+            <Link to="/card" className="btn-secondary !px-4 !py-1.5 text-sm">
+              <CreditCard className="h-4 w-4" /> My card
+            </Link>
+            <Link to="/market" className="btn-primary !px-4 !py-1.5 text-sm">
+              <ShoppingBag className="h-4 w-4" /> Market
+            </Link>
+          </div>
+        ) : (
+          <Link to="/payments" className="btn-secondary !px-4 !py-1.5 text-sm">
+            Upgrade for Market & Card
           </Link>
-          <Link to="/market" className="btn-primary !px-4 !py-1.5 text-sm">
-            <ShoppingBag className="h-4 w-4" /> Market
-          </Link>
-        </div>
+        )}
       </div>
 
       <div className="mt-10 grid gap-8 lg:grid-cols-2">

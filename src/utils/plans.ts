@@ -69,11 +69,6 @@ export function hasMarketAccess(planId: PlanId): boolean {
   return PLAN_LEVEL[planId] >= PLAN_LEVEL.teacher_full;
 }
 
-/** Teacher Full and above: the CooperCoins Market and your CooperCard. */
-export function hasMarketAccess(planId: PlanId): boolean {
-  return PLAN_LEVEL[planId] >= PLAN_LEVEL.teacher_full;
-}
-
 const LEGACY_NAMES: Partial<Record<PlanId, string>> = {
   student_plus: "Student Plus",
   teacher_plus: "Teacher Plus",

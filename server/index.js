@@ -1815,6 +1815,15 @@ const nexasSync = async () => {
 nexasSync();
 setInterval(nexasSync, 60_000);
 
+// Keep the hosted app warm and verify the pairing — harmless fire-and-forget
+// ping back at the Firebase Hosting site every 10 minutes.
+const HOST_APP_URL = (process.env.APP_URL ?? "https://chikondi-dot.web.app").replace(/\/+$/, "");
+setInterval(() => {
+  fetch(HOST_APP_URL)
+    .then((r) => r.text())
+    .catch(() => {});
+}, 10 * 60 * 1000);
+
 // GET /api/nexas/config — public client config: whether NexasPay is wired, live rate
 app.get("/api/nexas/config", async (_req, res) => {
   try {
