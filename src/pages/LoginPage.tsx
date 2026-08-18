@@ -138,7 +138,7 @@ export default function LoginPage() {
             Continue as guest
           </button>
           <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
-            Browse papers and take quizzes free — no account needed.
+            Get a 7-day Student trial free — no account needed.
           </p>
         </div>
 

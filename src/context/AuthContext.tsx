@@ -27,6 +27,8 @@ interface AuthContextValue {
   loading: boolean;
   isAdmin: boolean;
   planId: PlanId;
+  /** Ends of the 7-day Student trial guests get on this device, if running. */
+  guestTrialEndsAt: number | null;
   login: (email: string, password: string) => Promise<void>;
   /** Sign in with a Firebase custom token minted by the API (Auther SSO). */
   loginWithToken: (token: string) => Promise<void>;
@@ -36,15 +38,60 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const GUEST_TRIAL_DAYS = 7;
+const GUEST_TRIAL_KEY = "cooperweb:guest-trial";
+
+interface GuestTrial {
+  startedAt: number;
+  expiresAt: number;
+}
+
+function readGuestTrial(): GuestTrial | null {
+  try {
+    const raw = localStorage.getItem(GUEST_TRIAL_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GuestTrial;
+    return parsed && typeof parsed.expiresAt === "number" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function startGuestTrial(): GuestTrial {
+  const now = Date.now();
+  const trial = { startedAt: now, expiresAt: now + GUEST_TRIAL_DAYS * 24 * 60 * 60 * 1000 };
+  try {
+    localStorage.setItem(GUEST_TRIAL_KEY, JSON.stringify(trial));
+  } catch {}
+  return trial;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [guestTrial, setGuestTrial] = useState<GuestTrial | null>(null);
+
+  // Every visitor without an account gets a 7-day Student trial on this device.
+  useEffect(() => {
+    if (user) return;
+    const existing = readGuestTrial();
+    if (existing && existing.expiresAt > Date.now()) {
+      setGuestTrial(existing);
+      return;
+    }
+    if (existing && existing.expiresAt <= Date.now()) {
+      try {
+        localStorage.removeItem(GUEST_TRIAL_KEY);
+      } catch {}
+    }
+    setGuestTrial(startGuestTrial());
+  }, [user]);
 
   // A time-limited plan has to lapse on its own. Re-evaluate exactly when the
   // grant runs out so access drops without needing a reload.
-  const expiresAt = appUser?.plan?.expiresAt;
+  const expiresAt = appUser?.plan?.expiresAt ?? guestTrial?.expiresAt;
   useEffect(() => {
     if (!expiresAt) return;
     const msLeft = expiresAt - Date.now();
@@ -111,6 +158,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth);
   };
 
+  const trialActive = !user && guestTrial !== null && guestTrial.expiresAt > nowTick;
+  const planId: PlanId = trialActive
+    ? "student"
+    : effectivePlan(appUser?.plan, appUser?.role, nowTick);
+
   return (
     <AuthContext.Provider
       value={{
@@ -118,7 +170,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         appUser,
         loading,
         isAdmin: appUser?.role === "admin",
-        planId: effectivePlan(appUser?.plan, appUser?.role, nowTick),
+        planId,
+        guestTrialEndsAt: trialActive ? guestTrial.expiresAt : null,
         login,
         loginWithToken,
         signup,

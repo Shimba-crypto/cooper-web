@@ -120,7 +120,7 @@ export default function Sidebar({
   mobileOpen,
   onCloseMobile,
 }: SidebarProps) {
-  const { user, appUser, isAdmin, planId, logout } = useAuth();
+  const { user, appUser, isAdmin, planId, guestTrialEndsAt, logout } = useAuth();
   const isFree = !hasInteractiveAccess(planId);
   const isMarketLocked = !hasMarketAccess(planId);
 
@@ -138,8 +138,10 @@ export default function Sidebar({
   ];
 
   const buildUpgrade = (mobile: boolean) => {
-    if (!isFree) return null;
+    if (!isFree && !guestTrialEndsAt) return null;
     const min = collapsed && !mobile;
+    const trial = guestTrialEndsAt != null;
+    const daysLeft = trial ? Math.max(1, Math.ceil((guestTrialEndsAt - Date.now()) / (24 * 60 * 60 * 1000))) : 0;
     return (
       <div className={`px-3 pb-2 ${min ? "" : ""}`}>
         <Link
@@ -151,8 +153,10 @@ export default function Sidebar({
         >
           {!min && (
             <span className="flex-1">
-              Free plan
-              <span className="block text-xs font-semibold text-amber-100">Take quizzes free — upgrade for progress</span>
+              {trial ? `Student trial — ${daysLeft}d left` : "Free plan"}
+              <span className="block text-xs font-semibold text-amber-100">
+                {trial ? "Upgrade to keep Student (K50)" : "Take quizzes free — upgrade for progress"}
+              </span>
             </span>
           )}
           <Wallet className="h-4 w-4 shrink-0" aria-hidden />
