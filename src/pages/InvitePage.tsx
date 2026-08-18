@@ -10,6 +10,7 @@ export default function InvitePage() {
   const { loginWithToken } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   // The link is single-use; a re-render must not spend it twice.
   const consumed = useRef(false);
 
@@ -39,7 +40,7 @@ export default function InvitePage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, attempt]);
 
   if (error) {
     return (
@@ -49,10 +50,20 @@ export default function InvitePage() {
           <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">Invite unavailable</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">{error}</p>
           <div className="mt-4 flex gap-3">
+            <button
+              onClick={() => {
+                consumed.current = false;
+                setError(null);
+                setAttempt((a) => a + 1);
+              }}
+              className="btn-primary"
+            >
+              Try again
+            </button>
             <Link to="/" className="btn-secondary">
               Go to home
             </Link>
-            <Link to="/login" className="btn-primary">
+            <Link to="/login" className="btn-secondary">
               Log in
             </Link>
           </div>

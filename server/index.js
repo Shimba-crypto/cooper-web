@@ -2565,6 +2565,14 @@ app.post("/api/invite/redeem", async (req, res) => {
   const invite = snap.val();
   if (!invite) return res.status(404).json({ error: "This invite link is invalid." });
   if (invite.usedAt) {
+    // Grace window: a page reload mid-sign-in (service-worker update, flaky
+    // network) must not burn the invite. Re-issue the same user's token while
+    // the claim is fresh; long-term the link stays single-use.
+    const withinGrace = Date.now() - invite.usedAt < 2 * 60 * 1000;
+    if (withinGrace && invite.usedBy) {
+      const retryToken = await getAuth().createCustomToken(invite.usedBy);
+      return res.json({ customToken: retryToken, email: invite.email, name: invite.name });
+    }
     return res.status(410).json({ error: "This invite link has already been used." });
   }
   if (!invite.expiresAt || Date.now() > invite.expiresAt) {
