@@ -222,6 +222,12 @@
     "nexas": {
       ".read": "auth != null",
       ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+    },
+    "aiChats": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
     }
   }
 }

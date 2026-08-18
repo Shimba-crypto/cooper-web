@@ -2,6 +2,7 @@ import { Link, NavLink } from "react-router-dom";
 import {
   BarChart3,
   BookOpen,
+  Bot,
   Coins,
   Contact,
   CreditCard,
@@ -74,6 +75,7 @@ const navGroups: NavGroup[] = [
       { to: "/quizzes", label: "Quizzes", icon: FileQuestion },
       { to: "/notes", label: "Study Notes", icon: FileText },
       { to: "/generate", label: "Random Paper", icon: Dices },
+      { to: "/ai-chat", label: "AI Chat", icon: Bot, gated: true },
       { to: "/create-quiz", label: "Create Quiz", icon: Plus },
     ],
   },

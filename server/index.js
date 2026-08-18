@@ -10,6 +10,7 @@
 // Admin endpoints require header: x-api-key: <ADMIN_API_KEY>
 // Service account: env SERVICE_ACCOUNT_JSON (raw JSON) or file ./serviceAccountKey.json
 import { readFileSync, existsSync } from "node:fs";
+import { Readable } from "node:stream";
 import { randomUUID, randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import express from "express";
 import cors from "cors";
@@ -40,6 +41,12 @@ const db = getDatabase();
 
 const app = express();
 app.set("trust proxy", true); // Render terminates TLS; keep req.protocol honest (https)
+// Lets local dev pages (http://localhost:5173) call the API on loopback; Chrome's
+// Private Network Access requires this on the preflight. Harmless in production.
+app.use((_req, res, next) => {
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
+  next();
+});
 app.use(cors());
 app.use(express.json());
 
@@ -2589,6 +2596,217 @@ app.post("/api/invite/redeem", async (req, res) => {
     return res.json({ customToken, email: invite.email, name: invite.name });
   } catch {
     return res.status(500).json({ error: "Could not sign you in. Try again or contact support." });
+  }
+});
+
+// ---------- AI Chat (OmniRoute gateway) ----------
+// The gateway speaks the OpenAI chat-completions API. OMNIROUTE_URL defaults to
+// the local OmniRoute install (http://localhost:20128/v1); point it elsewhere
+// when the gateway runs remotely. OMNIROUTE_API_KEY is an endpoint key created
+// in the OmniRoute dashboard. Responses stream back to the SPA as SSE.
+//
+// The AI also gets read-only tools so it can pull real CooperWeb data (the
+// student's own results, quiz/note/paper lists, the leaderboard) and answer
+// with facts instead of guesses.
+const OMNIROUTE_URL = process.env.OMNIROUTE_URL ?? "http://localhost:20128/v1";
+const OMNIROUTE_API_KEY = process.env.OMNIROUTE_API_KEY ?? "";
+const AI_MAX_TOOL_ROUNDS = 3;
+
+const AI_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "get_user_progress",
+      description:
+        "The student's own quiz results: quizzes taken, attempt count and best percentage for each. Takes no arguments.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_quizzes",
+      description: "List of available quizzes (id, title, subject, year). Takes no arguments.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_notes",
+      description: "List of study notes (id, title). Takes no arguments.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_papers",
+      description: "List of past papers (id, title, subject, year). Takes no arguments.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_leaderboard",
+      description: "Top 10 students on the leaderboard by total score. Takes no arguments.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+];
+
+const runAiTool = async (name, uid) => {
+  try {
+    switch (name) {
+      case "get_user_progress": {
+        const snap = await db.ref(`results/${uid}`).once("value");
+        const results = snap.val() ?? {};
+        const out = [];
+        for (const [quizId, attempts] of Object.entries(results)) {
+          // A flat record { score, total, ... } is one attempt, not a bucket of them.
+          const entries =
+            attempts && typeof attempts === "object" && "score" in attempts && "total" in attempts
+              ? [attempts]
+              : Object.values(attempts);
+          const best = entries.reduce(
+            (m, a) => Math.max(m, a.total > 0 ? Math.round((a.score / a.total) * 100) : 0),
+            0
+          );
+          out.push({ quiz: quizId, attempts: entries.length, bestPercent: best });
+        }
+        return JSON.stringify(out.slice(0, 20));
+      }
+      case "get_quizzes": {
+        const snap = await db.ref("quizzes").once("value");
+        const quizzes = snap.val() ?? {};
+        return JSON.stringify(
+          Object.entries(quizzes)
+            .slice(0, 50)
+            .map(([id, q]) => ({ id, title: q?.title ?? id, subject: q?.subject ?? "", year: q?.year ?? "" }))
+        );
+      }
+      case "get_notes": {
+        const snap = await db.ref("notes").once("value");
+        const notes = snap.val() ?? {};
+        return JSON.stringify(
+          Object.entries(notes)
+            .slice(0, 50)
+            .map(([id, n]) => ({ id, title: n?.title ?? id }))
+        );
+      }
+      case "get_papers": {
+        const snap = await db.ref("papers").once("value");
+        const papers = snap.val() ?? {};
+        return JSON.stringify(
+          Object.entries(papers)
+            .slice(0, 50)
+            .map(([id, p]) => ({ id, title: p?.title ?? id, subject: p?.subject ?? "", year: p?.year ?? "" }))
+        );
+      }
+      case "get_leaderboard": {
+        const snap = await db.ref("leaderboard").once("value");
+        const board = snap.val() ?? {};
+        const top = Object.entries(board)
+          .map(([id, e]) => ({ name: e?.displayName ?? id, score: e?.totalScore ?? 0, quizzes: e?.quizzesTaken ?? 0 }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 10);
+        return JSON.stringify(top);
+      }
+      default:
+        return JSON.stringify({ error: `Unknown tool: ${name}` });
+    }
+  } catch (err) {
+    return JSON.stringify({ error: err.message });
+  }
+};
+
+app.post("/api/ai/chat", async (req, res) => {
+  const authHeader = req.get("authorization") ?? "";
+  const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!idToken) return res.status(401).json({ error: "You must be logged in to chat." });
+
+  let uid;
+  try {
+    ({ uid } = await getAuth().verifyIdToken(idToken));
+  } catch {
+    return res.status(401).json({ error: "Your session is invalid. Log in again." });
+  }
+
+  const { messages } = req.body ?? {};
+  if (!Array.isArray(messages) || messages.length === 0 || messages.length > 60) {
+    return res.status(400).json({ error: "Missing messages." });
+  }
+  if (!OMNIROUTE_API_KEY) {
+    return res.status(503).json({ error: "AI Chat is not configured yet. Try again later." });
+  }
+
+  const callGateway = async (msgs, withTools) => {
+    const controller = new AbortController();
+    req.on("close", () => controller.abort());
+    return fetch(`${OMNIROUTE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OMNIROUTE_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "auto",
+        messages: msgs,
+        stream: false,
+        ...(withTools ? { tools: AI_TOOLS, tool_choice: "auto" } : {}),
+      }),
+      signal: controller.signal,
+    });
+  };
+
+  const streamAnswer = (content) => {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+    if (content) {
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`);
+    }
+    res.end("data: [DONE]\n\n");
+  };
+
+  try {
+    // Tool loop: let the model decide whether it needs CooperWeb data before
+    // answering. Non-streamed calls keep the tool round-trips simple; the
+    // final answer is streamed straight back to the SPA as SSE.
+    let working = messages;
+    for (let round = 0; round < AI_MAX_TOOL_ROUNDS; round++) {
+      const upstream = await callGateway(working, true);
+      if (!upstream.ok || !upstream.body) {
+        const detail = await upstream.text().catch(() => "");
+        console.log(`[ai-chat] gateway error ${upstream.status}: ${detail.slice(0, 300)}`);
+        return res.status(502).json({ error: `AI gateway error (${upstream.status}).` });
+      }
+      const data = await upstream.json().catch(() => null);
+      const choice = data?.choices?.[0]?.message;
+      const toolCalls = choice?.tool_calls ?? [];
+      console.log(`[ai-chat] round ${round} tools=${toolCalls.length} contentLen=${(choice?.content ?? "").length} msgs=${working.length}`);
+      if (!choice || toolCalls.length === 0) {
+        return streamAnswer(choice?.content ?? "");
+      }
+      // The model asked for data — run the tools and feed results back.
+      const toolMessages = [];
+      for (const call of toolCalls) {
+        const result = await runAiTool(call.function?.name ?? "", uid);
+        toolMessages.push({ role: "tool", tool_call_id: call.id, content: result });
+      }
+      working = [
+        ...working,
+        { role: "assistant", content: choice.content ?? "", tool_calls: toolCalls },
+        ...toolMessages,
+      ];
+    }
+    return res.status(502).json({ error: "The AI took too many steps. Try a simpler question." });
+  } catch {
+    if (!res.headersSent) return res.status(502).json({ error: "AI gateway unreachable." });
+    res.end();
   }
 });
 
