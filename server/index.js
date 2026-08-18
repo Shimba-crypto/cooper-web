@@ -2555,6 +2555,35 @@ app.get("/api/auth/sso/callback", async (req, res) => {
   }
 });
 
+app.post("/api/invite/redeem", async (req, res) => {
+  const { token } = req.body ?? {};
+  if (typeof token !== "string" || !token) {
+    return res.status(400).json({ error: "Missing invite token." });
+  }
+
+  const snap = await db.ref(`inviteLinks/${token}`).once("value");
+  const invite = snap.val();
+  if (!invite) return res.status(404).json({ error: "This invite link is invalid." });
+  if (invite.usedAt) {
+    return res.status(410).json({ error: "This invite link has already been used." });
+  }
+  if (!invite.expiresAt || Date.now() > invite.expiresAt) {
+    return res.status(410).json({ error: "This invite link has expired. Ask the sender for a new one." });
+  }
+
+  try {
+    // Create (or find) the Firebase user for the invited email and mirror the
+    // RTDB records the SPA signup path creates.
+    const record = await ssoLocalUser({ email: invite.email, name: invite.name });
+    if (!record) return res.status(400).json({ error: "This invite has no email address." });
+    await snap.ref.update({ usedAt: Date.now(), usedBy: record.uid });
+    const customToken = await getAuth().createCustomToken(record.uid);
+    return res.json({ customToken, email: invite.email, name: invite.name });
+  } catch {
+    return res.status(500).json({ error: "Could not sign you in. Try again or contact support." });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`CooperWeb API listening on port ${PORT}`);
 });

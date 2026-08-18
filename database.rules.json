@@ -47,6 +47,12 @@
         ".write": "auth != null && (root.child('users/' + auth.uid + '/role').val() === 'admin' || (newData.hasChildren(['planId']) && newData.child('claimedBy').val() === auth.uid))"
       }
     },
+    "inviteLinks": {
+      ".read": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'",
+      "$token": {
+        ".write": "auth != null && root.child('users/' + auth.uid + '/role').val() === 'admin'"
+      }
+    },
     "codes": {
       ".read": "auth != null",
       "$code": {

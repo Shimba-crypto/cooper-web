@@ -114,6 +114,16 @@ export interface ClaimCode {
   claimedAt?: number;
 }
 
+export interface InviteLink {
+  email: string;
+  name?: string;
+  createdAt: number;
+  expiresAt: number;
+  createdBy: string;
+  usedAt?: number;
+  usedBy?: string;
+}
+
 export interface Announcement {
   id: string;
   text: string;

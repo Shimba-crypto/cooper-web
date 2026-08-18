@@ -12,6 +12,7 @@ import LeaderboardPage from "./pages/LeaderboardPage";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import InvitePage from "./pages/InvitePage";
 import ClaimPage from "./pages/ClaimPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -92,6 +93,7 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/claim/:token" element={<ClaimPage />} />
+              <Route path="/invite/:token" element={<InvitePage />} />
               <Route path="/admin" element={<AdminDashboardPage />} />
               <Route path="/profile/:uid" element={<ProfilePage />} />
               <Route path="/settings" element={<EditProfilePage />} />

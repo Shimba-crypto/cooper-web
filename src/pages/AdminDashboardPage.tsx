@@ -28,6 +28,7 @@ import {
   Upload,
   Users,
   Ticket,
+  UserPlus,
   Wallet,
 } from "lucide-react";
 import { onValue, ref, remove, set, update } from "firebase/database";
@@ -50,6 +51,7 @@ import type {
   AppUser,
   ClaimCode,
   DailyQuestion,
+  InviteLink,
   Note,
   Paper,
   PaperType,
@@ -62,7 +64,7 @@ import type {
   PaymentRecord,
 } from "../types";
 
-type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "codes" | "payments" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "market" | "johnweb" | "trading";
+type Tab = "overview" | "papers" | "quizzes" | "analytics" | "announcements" | "plans" | "codes" | "invites" | "payments" | "users" | "leaderboard" | "groups" | "export" | "notes" | "reports" | "daily" | "broadcast" | "import" | "market" | "johnweb" | "trading";
 
 const PAPER_TYPES: PaperType[] = ["Paper 1", "Paper 2", "Practical"];
 const SUBJECTS = [
@@ -124,6 +126,7 @@ export default function AdminDashboardPage() {
     { id: "announcements", label: "Announcements", icon: Megaphone },
     { id: "plans", label: "Plans", icon: Gift },
     { id: "codes", label: "Redeem Codes", icon: Ticket },
+    { id: "invites", label: "Invite Links", icon: UserPlus },
     { id: "payments", label: "Payments", icon: Wallet },
     { id: "users", label: "Users", icon: Users },
     { id: "leaderboard", label: "Leaderboard", icon: Trophy },
@@ -173,6 +176,7 @@ export default function AdminDashboardPage() {
         {tab === "announcements" && <AnnouncementsTab />}
         {tab === "plans" && <PlansTab />}
         {tab === "codes" && <RedeemCodesTab />}
+        {tab === "invites" && <InviteLinksTab />}
         {tab === "payments" && <PaymentsTab />}
         {tab === "users" && <UsersTab />}
         {tab === "leaderboard" && <LeaderboardTab />}
@@ -1110,6 +1114,167 @@ function PlansTab() {
                 </li>
               );
             })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InviteLinksTab() {
+  const { user } = useAuth();
+  const [invites, setInvites] = useState<Record<string, InviteLink> | null>(null);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const { askConfirm, dialog: confirmDialog } = useConfirmDialog();
+
+  useEffect(() => {
+    const unsubscribe = onValue(ref(db, "inviteLinks"), (snapshot) => {
+      setInvites(snapshot.val() ?? {});
+    });
+    return unsubscribe;
+  }, []);
+
+  const create = async (e: FormEvent) => {
+    e.preventDefault();
+    setMessage(null);
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setMessage("Enter a valid email address.");
+      return;
+    }
+    const token = generateClaimToken();
+    const now = Date.now();
+    try {
+      await set(ref(db, `inviteLinks/${token}`), {
+        email: email.trim().toLowerCase(),
+        name: name.trim(),
+        createdAt: now,
+        expiresAt: now + 30 * 60 * 1000,
+        createdBy: user?.uid ?? "admin",
+      });
+      const link = `${window.location.origin}/invite/${token}`;
+      await navigator.clipboard.writeText(link);
+      setMessage("Invite link created and copied — they'll be logged in automatically, link expires in 30 minutes.");
+      setEmail("");
+      setName("");
+    } catch (err) {
+      setMessage(err instanceof Error ? `Failed: ${err.message}` : "Failed to create invite.");
+    }
+  };
+
+  const copyLink = async (token: string) => {
+    await navigator.clipboard.writeText(`${window.location.origin}/invite/${token}`);
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(null), 1500);
+  };
+
+  const removeInvite = async (token: string) => {
+    const confirmed = await askConfirm({
+      title: "Delete invite link?",
+      message: "The link will stop working immediately.",
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
+    await remove(ref(db, `inviteLinks/${token}`));
+  };
+
+  return (
+    <div className="space-y-6">
+      {confirmDialog}
+      <div className="card h-fit p-6">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+          Invite someone
+        </h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Enter their details and send them the link. When they open it, they're logged in
+          automatically — no account needed. Each link works once and expires in 30 minutes.
+        </p>
+        {message && (
+          <p role="status" className={`mt-3 rounded-lg px-3 py-2 text-sm ${message.startsWith("Failed") ? "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"}`}>
+            {message}
+          </p>
+        )}
+        <form onSubmit={create} className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="label">Name (optional)</span>
+            <input
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Chanda Banda"
+            />
+          </label>
+          <label className="block">
+            <span className="label">Email</span>
+            <input
+              className="input"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="student@example.com"
+            />
+          </label>
+          <div className="sm:col-span-2">
+            <button type="submit" className="btn-primary">
+              <UserPlus className="h-4 w-4" /> Generate invite link
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="card p-6">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Invite links</h2>
+        {invites === null ? (
+          <Spinner label="Loading invite links…" />
+        ) : Object.keys(invites).length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+            No invite links yet.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {Object.entries(invites)
+              .sort(([, a], [, b]) => b.createdAt - a.createdAt)
+              .map(([token, invite]) => {
+                const now = Date.now();
+                const used = Boolean(invite.usedAt);
+                const expired = !used && now > invite.expiresAt;
+                const minutesLeft = Math.max(0, Math.round((invite.expiresAt - now) / 60000));
+                return (
+                  <li key={token} className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 dark:text-white">
+                          {invite.name || invite.email}
+                        </p>
+                        <p className="truncate text-sm text-slate-500 dark:text-slate-400">{invite.email}</p>
+                      </div>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          used
+                            ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                            : expired
+                              ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400"
+                              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
+                        }`}
+                      >
+                        {used ? "Used" : expired ? "Expired" : `${minutesLeft} min left`}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button onClick={() => copyLink(token)} className="btn-secondary !px-3 !py-1.5 text-xs">
+                        <Copy className="h-3.5 w-3.5" /> {copiedToken === token ? "Copied!" : "Copy link"}
+                      </button>
+                      <button onClick={() => removeInvite(token)} className="btn-secondary !px-3 !py-1.5 text-xs text-red-600 dark:text-red-400">
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
           </ul>
         )}
       </div>
