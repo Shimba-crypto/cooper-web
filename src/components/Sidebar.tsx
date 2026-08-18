@@ -151,8 +151,8 @@ export default function Sidebar({
         >
           {!min && (
             <span className="flex-1">
-              Free plan — read-only
-              <span className="block text-xs font-semibold text-amber-100">Upgrade to Student (K50)</span>
+              Free plan
+              <span className="block text-xs font-semibold text-amber-100">Take quizzes free — upgrade for progress</span>
             </span>
           )}
           <Wallet className="h-4 w-4 shrink-0" aria-hidden />

@@ -10,7 +10,6 @@ import { hasInteractiveAccess, hasMarketAccess, planName } from "../utils/plans"
 import PlanBadge from "../components/PlanBadge";
 import RedeemCard from "../components/RedeemCard";
 import TrialBanner from "../components/TrialBanner";
-import UpgradeGate from "../components/UpgradeGate";
 import Spinner from "../components/Spinner";
 import type { QuizResult } from "../types";
 
@@ -37,11 +36,77 @@ export default function DashboardPage() {
   if (loading) return <Spinner label="Loading dashboard…" />;
 
   if (!hasInteractiveAccess(planId)) {
+    const guestLinks = [
+      { to: "/papers", label: "Past Papers", desc: "Browse all ECZ papers & marking schemes" },
+      { to: "/quizzes", label: "Quizzes", desc: "Take quizzes free — no account needed" },
+      { to: "/notes", label: "Study Notes", desc: "Notes for every subject" },
+      { to: "/leaderboard", label: "Leaderboard", desc: "See how students are scoring" },
+    ];
+    const guestStats = [
+      { label: "Papers viewed on this device", value: viewed.length, icon: Eye },
+      { label: "Bookmarks on this device", value: bookmarks.length, icon: Bookmark },
+    ];
     return (
-      <UpgradeGate
-        title="Dashboard is a Student plan feature"
-        message="Your dashboard tracks your quizzes, bookmarks and ratings. Browse papers and quizzes freely — upgrade to unlock your dashboard."
-      />
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">
+          {user ? `Welcome, ${user.email?.split("@")[0] ?? "Student"}!` : "Welcome to CooperWeb"}
+        </h1>
+        <p className="mt-1 text-slate-600 dark:text-slate-400">
+          Browse past papers and take quizzes free — no account needed.{" "}
+          {user
+            ? "Upgrade to Student (K50) to save progress, join the leaderboard and earn CooperCoins."
+            : "Log in to save your progress and earn CooperCoins."}
+        </p>
+
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {guestLinks.map((link) => (
+            <Link key={link.to} to={link.to} className="card p-5 transition hover:border-emerald-400">
+              <p className="text-lg font-bold text-slate-900 dark:text-white">{link.label}</p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{link.desc}</p>
+              <span className="mt-3 inline-block text-sm font-semibold text-emerald-600">Open →</span>
+            </Link>
+          ))}
+        </div>
+
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {guestStats.map((stat) => (
+            <div key={stat.label} className="card p-5">
+              <stat.icon className="h-6 w-6 text-emerald-600" />
+              <p className="mt-3 text-3xl font-extrabold text-slate-900 dark:text-white">{stat.value}</p>
+              <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">{stat.label}</p>
+            </div>
+          ))}
+          <div className="card p-5">
+            <TrendingUp className="h-6 w-6 text-emerald-600" />
+            <p className="mt-3 text-3xl font-extrabold text-slate-900 dark:text-white">Free</p>
+            <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">Take quizzes as a guest</p>
+          </div>
+        </div>
+
+        <div className="card mt-8 border-emerald-400 p-6 dark:border-emerald-800">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                {user ? "Save your progress" : "Save your progress — joining is free"}
+              </h2>
+              <p className="mt-1 max-w-xl text-sm text-slate-600 dark:text-slate-400">
+                Log in and upgrade to Student (K50) to save quiz scores, join the leaderboard and earn
+                CooperCoins with every quiz you take.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!user && (
+                <Link to="/login?next=/" className="btn-secondary">
+                  Log in
+                </Link>
+              )}
+              <Link to="/payments" className="btn-primary">
+                Upgrade to Student (K50)
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
