@@ -965,7 +965,7 @@ function PlansTab() {
 
   const whatsAppLink = (token: string) =>
     `https://wa.me/?text=${encodeURIComponent(
-      `Claim your ${planName(codeById(token) ?? "teacher_full")} plan on CooperWeb: ${window.location.origin}/claim/${token}`
+      `Claim your ${planName(codeById(token) ?? "teacher_full")} plan on CooperWeb: ${window.location.origin}/claim/${token} — you can also browse papers and take quizzes free as a guest: ${window.location.origin}`
     )}`;
 
   const removeCode = async (token: string) => {
@@ -992,7 +992,8 @@ function PlansTab() {
         </h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Share these links with students or teachers. Each link can be claimed once per
-          person (or more, depending on the usage limit).
+          person (or more, depending on the usage limit). Invitees can also browse papers and
+          take quizzes free as a guest — no account needed.
         </p>
         {message && (
           <p role="status" className={`mt-3 rounded-lg px-3 py-2 text-sm ${message.startsWith("Failed") ? "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"}`}>
