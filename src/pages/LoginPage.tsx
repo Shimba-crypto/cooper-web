@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { LogIn, ShieldCheck, Sparkles } from "lucide-react";
+import { LogIn, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { API_URL } from "../config";
 
@@ -127,6 +127,20 @@ export default function LoginPage() {
             <LogIn className="h-4 w-4" /> {busy ? "Logging in…" : "Log in"}
           </button>
         </form>
+
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => navigate(next, { replace: true })}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-emerald-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+          >
+            <UserRound className="h-4 w-4 text-emerald-600" />
+            Continue as guest
+          </button>
+          <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
+            Browse papers and take quizzes free — no account needed.
+          </p>
+        </div>
 
         <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
           No account?{" "}
