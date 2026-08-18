@@ -15,6 +15,7 @@ import SignupPage from "./pages/SignupPage";
 import InvitePage from "./pages/InvitePage";
 import ClaimPage from "./pages/ClaimPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 import ProfilePage from "./pages/ProfilePage";
 import EditProfilePage from "./pages/EditProfilePage";
 import CertificatePage from "./pages/CertificatePage";
@@ -95,6 +96,7 @@ export default function App() {
               <Route path="/claim/:token" element={<ClaimPage />} />
               <Route path="/invite/:token" element={<InvitePage />} />
               <Route path="/admin" element={<AdminDashboardPage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/profile/:uid" element={<ProfilePage />} />
               <Route path="/settings" element={<EditProfilePage />} />
               <Route path="/certificate/:quizId" element={<CertificatePage />} />

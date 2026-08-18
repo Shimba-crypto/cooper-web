@@ -1,5 +1,6 @@
 import { Link, NavLink } from "react-router-dom";
 import {
+  BarChart3,
   BookOpen,
   Coins,
   Contact,
@@ -133,7 +134,7 @@ export default function Sidebar({
       .map((group) => ({ ...group, items: group.items.filter(visible) }))
       .filter((group) => group.items.length > 0),
     ...(isAdmin
-      ? [{ title: "Admin", items: [{ to: "/admin", label: "Admin", icon: ShieldCheck }] }]
+      ? [{ title: "Admin", items: [{ to: "/admin", label: "Admin", icon: ShieldCheck }, { to: "/analytics", label: "Analytics", icon: BarChart3 }] }]
       : []),
   ];
 

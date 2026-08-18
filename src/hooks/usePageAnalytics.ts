@@ -32,9 +32,13 @@ export function usePageAnalytics() {
     }
     lastPath.current = location.pathname;
     const path = location.pathname === "/" ? "home" : location.pathname.slice(1);
+    const d = new Date();
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const updates: Record<string, unknown> = {
       [`analytics/pages/${path}/views`]: increment(1),
       [`analytics/pages/${path}/uniqueUsers/${user.uid}`]: true,
+      [`analytics/daily/${dateKey}/${path}/views`]: increment(1),
+      [`analytics/daily/${dateKey}/${path}/uniqueUsers/${user.uid}`]: true,
       [`analytics/lastVisit/${user.uid}`]: Date.now(),
     };
     update(ref(db), updates).catch(() => {});
