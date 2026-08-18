@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { MailCheck, ShieldAlert } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -10,8 +10,12 @@ export default function InvitePage() {
   const { loginWithToken } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
+  // The link is single-use; a re-render must not spend it twice.
+  const consumed = useRef(false);
 
   useEffect(() => {
+    if (consumed.current) return;
+    consumed.current = true;
     let cancelled = false;
     (async () => {
       try {
@@ -35,7 +39,7 @@ export default function InvitePage() {
     return () => {
       cancelled = true;
     };
-  }, [token, loginWithToken, navigate]);
+  }, [token]);
 
   if (error) {
     return (
