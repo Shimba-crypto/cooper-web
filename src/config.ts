@@ -1,7 +1,7 @@
 export const PAYMENT_MERCHANT_NUMBER = "0975876361";
 export const JOHNWEB_URL = "https://johnweb-qncu.onrender.com";
 export const JOHNWEB_INVITE_URL = "https://johnweb-qncu.onrender.com/invite/92ms0tklymzo7m6c";
-export const API_URL = import.meta.env.VITE_API_URL ?? "https://cooper-web.onrender.com";
+export const API_URL = "https://cooper-web.onrender.com";
 
 // Android app. The APK is hosted on GitHub Releases, not Firebase Hosting —
 // Hosting rejects executable files on the Spark (free) plan.

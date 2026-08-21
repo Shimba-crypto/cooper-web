@@ -42,7 +42,6 @@ import PeoplePage from "./pages/PeoplePage";
 import MarketPage from "./pages/MarketPage";
 import CardPage from "./pages/CardPage";
 import TradingCenterPage from "./pages/TradingCenterPage";
-import AIChatPage from "./pages/AIChatPage";
 import { useTheme } from "./hooks/useTheme";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { usePageAnalytics } from "./hooks/usePageAnalytics";
@@ -125,7 +124,6 @@ export default function App() {
               <Route path="/market" element={<MarketPage />} />
               <Route path="/card" element={<CardPage />} />
               <Route path="/trading" element={<TradingCenterPage />} />
-              <Route path="/ai-chat" element={<AIChatPage />} />
               <Route path="*" element={<HomePage />} />
             </Routes>
           </main>
